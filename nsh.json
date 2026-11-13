@@ -3,5 +3,35 @@
   "id": "com.example.longxgui",
   "version": "1.0.0",
   "build": 1,
-  "appearance": "light"
+  "appearance": "light",
+  "theme": {
+    "cssVars": {
+      "theme": {
+        "font-sans": "system-ui, -apple-system, 'PingFang SC', 'Segoe UI', sans-serif"
+      },
+      "light": {
+        "background": "#fbfbf9",
+        "foreground": "#35332f",
+        "muted-foreground": "#68655d",
+        "titlebar": "#e7e6e0",
+        "surface": "#f6f5f1",
+        "sidebar": "#f3f2ef",
+        "quiet": "#7c786d",
+        "purple": "#7752a8",
+        "teal": "#1e7686",
+        "ochre": "#936312",
+        "overlay": "#000000"
+      },
+      "dark": {
+        "titlebar": "#1c1d18",
+        "surface": "#22241e",
+        "sidebar": "#20211c",
+        "quiet": "#969b87",
+        "purple": "#ae81ff",
+        "teal": "#66d9ef",
+        "ochre": "#e6db74",
+        "overlay": "#000000"
+      }
+    }
+  }
 }

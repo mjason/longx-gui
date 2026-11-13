@@ -1,54 +1,238 @@
-import { expect, open, test } from "nsh/test";
+import { expect, open, test, type App } from "nsh/test";
+import { mockServer } from "./tests/fixtures/server";
 
-test("shows the top tab strip without business content or network requests", async () => {
-  const app = await open("./App.tsx", { platform: "macos", width: 1280, height: 840 });
-  expect(app.count("id:app-root")).toBe(1);
-  expect(app.count("id:top-bar")).toBe(1);
-  expect(app.count("id:empty-content")).toBe(1);
-  expect(app.count("id:project-bar")).toBe(1);
-  expect(app.texts().sort()).toEqual(["服务器 1", "服务器 2", "服务器 3", "+", "项目", "项目 1", "项目 2", "项目 3"].sort());
-  expect(app.count("id:add-server")).toBe(1);
-  await app.press("id:top-tab-2");
-  expect(app.texts().sort()).toEqual(["服务器 1", "服务器 2", "服务器 3", "+", "项目", "项目 1", "项目 2", "项目 3"].sort());
-  expect(app.requests()).toEqual([]);
+async function openApp() {
+  const app = await open("./App.tsx", {
+    platform: "macos", width: 1280, height: 840, network: { "*": mockServer },
+  });
+  await app.waitFor("id:file-entry-App.tsx");
+  return app;
+}
+
+async function addServer(app: App, address: string, name = "测试服务器") {
+  await app.press("id:add-server");
+  await app.type("id:server-name", name);
+  await app.type("id:server-address", address);
+  await app.press("id:confirm-add-server");
+  await app.waitFor("id:file-entry-App.tsx");
+}
+
+test("switches themes live without resetting workspace or refetching files", async () => {
+  const app = await openApp();
+  await app.press("id:file-entry-src");
+  await app.waitFor("id:file-entry-src/index.ts");
+  const requests = app.requests().length;
+  expect(app.texts()).toContain("浅色");
+  await app.press("id:theme-menu");
+  await app.press("id:theme-dark");
+  expect(app.texts()).toContain("深色");
+  expect(app.count("id:file-entry-src/index.ts")).toBe(1);
+  expect(app.count("id:project-selected-p1")).toBe(1);
+  expect(app.requests().length).toBe(requests);
+  expect(app.storage()["appearance.theme"]).toBe("dark");
+  await app.press("id:add-server");
+  expect(app.texts()).toContain("添加服务器");
+  await app.press("text:取消");
+  await app.wait(200);
+  await app.press("id:theme-menu");
+  await app.press("id:theme-light");
+  expect(app.texts()).toContain("浅色");
+  expect(app.count("id:file-entry-src/index.ts")).toBe(1);
+});
+
+test("restores saved theme and falls back safely for unknown preferences", async () => {
+  const app = await open("./App.tsx", { platform: "macos",
+    storage: { "appearance.theme": "dark" }, network: { "*": mockServer } });
+  await app.waitFor("text:深色");
+  expect(app.storage()["appearance.theme"]).toBe("dark");
+  const fallback = await open("./App.tsx", { platform: "macos",
+    storage: { "appearance.theme": "removed-theme" }, network: { "*": mockServer } });
+  await fallback.waitFor("id:file-entry-App.tsx");
+  expect(fallback.texts()).toContain("浅色");
+});
+
+test("keeps legacy theme preferences after removing the old theme name", async () => {
+  const app = await open("./App.tsx", { platform: "macos",
+    storage: { "appearance.theme": "monokai-dark" }, network: { "*": mockServer } });
+  await app.waitFor("text:深色");
+  expect(app.texts().some(text => text.includes("Monokai"))).toBe(false);
+});
+
+test("retains separate file and conversation tabs with selection and close behavior", async () => {
+  const app = await openApp();
+  await app.press("id:file-entry-App.tsx");
+  await app.keyboard.press("enter");
+  await app.press("id:thread-entry-t1");
+  await app.press("id:thread-entry-t1");
+  expect(app.count("id:content-tab-file:App.tsx")).toBe(1);
+  expect(app.count("id:content-tab-chat:t1")).toBe(1);
+  const requests = app.requests().length;
+  await app.press("id:content-tab-file:App.tsx");
+  expect(app.texts()).toContain("文件预览将在后续接入");
+  await app.press("id:theme-menu");
+  await app.press("id:theme-dark");
+  expect(app.count("id:content-tab-chat:t1")).toBe(1);
+  expect(app.count("id:content-tab-indicator")).toBe(1);
+  await app.press("id:close-content-chat:t1");
+  expect(app.texts()).toContain("文件预览将在后续接入");
+  await app.press("id:thread-entry-t1");
+  await app.press("id:close-content-chat:t1");
+  expect(app.texts()).toContain("文件预览将在后续接入");
+  await app.press("id:close-content-file:App.tsx");
+  expect(app.texts()).toContain("从左侧选择文件或会话");
+  expect(app.count("id:content-tab-file:App.tsx")).toBe(0);
+  expect(app.requests().length).toBe(requests);
+  await app.press("id:thread-entry-t1");
+  await app.press("id:project-tab-p2");
+  await app.waitFor("id:project-selected-p2");
+  expect(app.count("id:content-tab-chat:t1")).toBe(0);
+});
+
+test("connects the local server and renders the real-data workspace layout", async () => {
+  const app = await openApp();
+  for (const id of ["app-root", "top-bar", "project-bar", "workspace-layout", "panel-bar", "workspace-sidebar", "workspace-main", "workspace-status"]) {
+    expect(app.count(`id:${id}`)).toBe(1);
+  }
+  expect(app.count("id:top-tab-1")).toBe(1);
+  expect(app.count("id:activity-bar")).toBe(0);
+  expect(app.count("id:files-dock")).toBe(1);
+  expect(app.count("id:conversations-dock")).toBe(1);
+  expect(app.count("id:workspace-context")).toBe(1);
+  expect(app.count("id:sidebar-search")).toBe(0);
+  expect(app.count("id:top-tab-2")).toBe(0);
+  expect(app.texts()).toContain("本地服务器");
+  expect(app.texts()).toContain("longx-gui");
+  expect(app.texts()).toContain("已连接");
+  expect(app.requests().length).toBeGreaterThan(1);
+  expect(app.requests().every(request => request.method === "GET" && request.url.startsWith("http://127.0.0.1:7788/gql?"))).toBe(true);
   const window = app.window("main").state()!;
   expect(window.bounds.size.height - window.contentBounds.size.height).toBeLessThan(4);
 });
 
-test("remembers each server's local project selection", async () => {
-  const app = await open("./App.tsx", { platform: "macos", width: 1280, height: 840 });
-  await app.press("id:project-tab-3");
-  expect(app.count("id:project-selected-3")).toBe(1);
-  await app.press("id:top-tab-2");
-  expect(app.count("id:project-selected-1")).toBe(1);
-  await app.press("id:project-tab-2");
-  await app.press("id:top-tab-1");
-  expect(app.count("id:project-selected-3")).toBe(1);
-  await app.press("id:top-tab-2");
-  expect(app.count("id:project-selected-2")).toBe(1);
-  await app.setViewport(640, 600);
-  expect(app.count("id:project-bar")).toBe(1);
-  expect(app.count("id:add-server")).toBe(1);
-  expect(app.requests()).toEqual([]);
+test("toggles independent bottom-bar docks without clearing file cache or content tabs", async () => {
+  const app = await openApp();
+  await app.press("id:file-entry-src");
+  await app.waitFor("id:file-entry-src/index.ts");
+  await app.press("id:thread-entry-t1");
+  const requests = app.requests().length;
+  await app.press("id:nav-folder");
+  expect(app.count("id:files-dock")).toBe(0);
+  expect(app.count("id:conversations-dock")).toBe(1);
+  await app.press("id:nav-folder");
+  await app.waitFor("id:file-entry-src/index.ts");
+  await app.press("id:nav-chat");
+  expect(app.count("id:conversations-dock")).toBe(0);
+  expect(app.count("id:file-tree")).toBe(1);
+  await app.press("id:nav-chat");
+  expect(app.count("id:thread-entry-t1")).toBe(1);
+  await app.press("id:nav-branch");
+  expect(app.texts()).toContain("Git功能将在后续接入。");
+  await app.press("id:nav-folder");
+  await app.waitFor("id:file-entry-src/index.ts");
+  await app.press("id:file-root-toggle");
+  expect(app.count("id:file-tree")).toBe(0);
+  await app.press("id:file-root-toggle");
+  await app.waitFor("id:file-entry-src/index.ts");
+  await app.press("id:toggle-sidebar");
+  expect(app.count("id:workspace-sidebar")).toBe(0);
+  await app.press("id:toggle-sidebar");
+  await app.waitFor("id:file-entry-src/index.ts");
+  expect(app.count("id:conversations-dock")).toBe(1);
+  expect(app.count("id:content-tab-chat:t1")).toBe(1);
+  await app.press("id:search-files");
+  await app.type("id:sidebar-search", "index");
+  await app.press("id:toggle-sidebar");
+  await app.press("id:toggle-sidebar");
+  expect(app.count("id:sidebar-search")).toBe(1);
+  expect(app.count("id:file-entry-App.tsx")).toBe(0);
+  expect(app.count("id:file-entry-src/index.ts")).toBe(1);
+  await app.clear("id:sidebar-search");
+  expect(app.count("id:file-entry-App.tsx")).toBe(1);
+  expect(app.requests().length).toBe(requests);
 });
 
-test("adds a local server tab through the plus without making a connection", async () => {
-  const app = await open("./App.tsx", { platform: "macos", width: 1280, height: 840 });
+test("keeps project selection separate for each server", async () => {
+  const app = await openApp();
+  await app.press("id:project-tab-p2");
+  await app.waitFor("id:project-selected-p2");
+  await addServer(app, "https://other.example");
+  expect(app.count("id:project-selected-p1")).toBe(1);
+  await app.press("id:top-tab-1");
+  expect(app.count("id:project-selected-p2")).toBe(1);
+  expect(app.texts()).toContain("后台工作");
+  await app.setViewport(640, 600);
+  expect(app.count("id:workspace-main")).toBe(1);
+  await app.press("id:close-sidebar");
+  expect(app.count("id:workspace-sidebar")).toBe(0);
+  await app.press("id:nav-folder");
+  expect(app.count("id:workspace-sidebar")).toBe(1);
+});
+
+test("uses a native lazy Tree and opens files on keyboard activation", async () => {
+  const app = await openApp();
+  expect(app.count("id:file-tree")).toBe(1);
+  await app.press("id:file-entry-src");
+  await app.waitFor("id:file-entry-src/index.ts");
+  expect(app.count("id:file-entry-App.tsx")).toBe(1);
+  const directoryRequests = () => app.requests().filter(request => request.url.includes("NativeDirectory")).length;
+  expect(directoryRequests()).toBe(1);
+  await app.press("id:file-entry-src");
+  expect(app.count("id:file-entry-src/index.ts")).toBe(0);
+  await app.press("id:file-entry-src");
+  await app.waitFor("id:file-entry-src/index.ts");
+  expect(directoryRequests()).toBe(1);
+  await app.press("id:search-files");
+  await app.type("id:sidebar-search", "index");
+  expect(app.count("id:file-entry-src")).toBe(1);
+  expect(app.count("id:file-entry-src/index.ts")).toBe(1);
+  expect(app.count("id:file-entry-App.tsx")).toBe(0);
+  await app.clear("id:sidebar-search");
+  await app.type("id:sidebar-search", "App");
+  expect(app.count("id:file-entry-src")).toBe(0);
+  await app.press("id:file-entry-App.tsx");
+  expect(app.texts()).not.toContain("文件预览将在后续接入");
+  await app.keyboard.press("enter");
+  expect(app.texts()).toContain("文件预览将在后续接入");
+  await app.press("id:thread-entry-t1");
+  expect(app.texts()).toContain("界面设计");
+  expect(app.texts()).toContain("会话内容将在后续接入");
+  expect(app.count("id:composer-placeholder")).toBe(1);
+  expect(app.requests().every(request => request.method === "GET")).toBe(true);
+});
+
+test("uses Tree arrow keys for selection and Enter for file activation", async () => {
+  const app = await openApp();
+  await app.press("id:file-entry-src");
+  await app.keyboard.press("right");
+  expect(app.texts()).not.toContain("文件预览将在后续接入");
+  await app.keyboard.press("enter");
+  expect(app.texts()).toContain("文件预览将在后续接入");
+  expect(app.texts()).toContain("src/index.ts");
+});
+
+test("rejects invalid addresses and deduplicates normalized servers", async () => {
+  const app = await openApp();
+  const before = app.requests().length;
   await app.press("id:add-server");
   await app.type("id:server-address", "file:///private");
   await app.press("id:confirm-add-server");
-  expect(app.count("id:top-tab-4")).toBe(0);
+  expect(app.count("id:top-tab-2")).toBe(0);
+  expect(app.requests().length).toBe(before);
   await app.clear("id:server-address");
-  await app.type("id:server-name", "测试服务器");
-  await app.type("id:server-address", "https://example.com");
+  await app.type("id:server-address", "http://127.0.0.1:7788/");
   await app.press("id:confirm-add-server");
-  expect(app.texts()).toContain("测试服务器");
-  expect(app.count("id:top-tab-4")).toBe(1);
-  expect(app.requests()).toEqual([]);
+  expect(app.count("id:top-tab-2")).toBe(0);
+  expect(app.count("id:server-selected-1")).toBe(1);
+  await app.press("id:add-server");
+  expect(app.value("id:server-address")).toBe("");
+  expect(app.value("id:server-name")).toBe("");
 });
 
-test("closes servers without selecting an inactive one and supports an empty strip", async () => {
-  const app = await open("./App.tsx", { platform: "macos", width: 1280, height: 840 });
+test("closes tabs, hides separators at selected/hover boundaries and recovers from an empty strip", async () => {
+  const app = await openApp();
+  await addServer(app, "https://two.example", "服务器 2");
+  await addServer(app, "https://three.example", "服务器 3");
+  await app.press("id:top-tab-1");
   expect(app.count("id:server-separator-1")).toBe(0);
   expect(app.count("id:server-separator-2")).toBe(1);
   await app.hover("id:top-tab-2");
@@ -57,60 +241,102 @@ test("closes servers without selecting an inactive one and supports an empty str
   expect(app.count("id:server-separator-2")).toBe(1);
   await app.press("id:close-server-3");
   expect(app.count("id:server-selected-1")).toBe(1);
-  expect(app.count("id:top-tab-3")).toBe(0);
   await app.press("id:close-server-1");
   expect(app.count("id:server-selected-2")).toBe(1);
   await app.press("id:close-server-2");
   expect(app.count("id:project-bar")).toBe(0);
-  expect(app.count("id:add-server")).toBe(1);
-  await app.press("id:add-server");
-  await app.type("id:server-address", "http://localhost:7788");
-  await app.press("id:confirm-add-server");
+  expect(app.texts()).toContain("添加服务器开始使用");
+  await addServer(app, "http://127.0.0.1:7788");
   expect(app.count("id:server-selected-4")).toBe(1);
   expect(app.count("id:project-bar")).toBe(1);
-  expect(app.requests()).toEqual([]);
 });
 
-test("closing the active server selects right then falls back to left", async () => {
-  const app = await open("./App.tsx", { platform: "macos", width: 1280, height: 840 });
-  await app.press("id:top-tab-2");
+test("closing the active last tab selects its left neighbor", async () => {
+  const app = await openApp();
+  await addServer(app, "https://two.example");
   await app.press("id:close-server-2");
-  expect(app.count("id:server-selected-3")).toBe(1);
-  await app.press("id:close-server-3");
   expect(app.count("id:server-selected-1")).toBe(1);
 });
 
-test("assigns distinct icons and keeps them stable through hover and selection", async () => {
-  const app = await open("./App.tsx", { platform: "macos", width: 1280, height: 840 });
+test("assigns distinct stable server icons", async () => {
+  const app = await openApp();
+  await addServer(app, "https://two.example");
+  await addServer(app, "https://three.example");
   const variants = [0, 1, 2, 3, 4, 5];
   const assigned = [1, 2, 3].map(id =>
     variants.find(variant => app.count(`id:server-icon-${id}-${variant}`) === 1));
   expect(new Set(assigned).size).toBe(3);
   await app.hover("id:top-tab-2");
-  await app.press("id:top-tab-3");
+  await app.press("id:top-tab-1");
   for (let index = 0; index < assigned.length; index++) {
     expect(app.count(`id:server-icon-${index + 1}-${assigned[index]}`)).toBe(1);
   }
 });
 
-test("resets the extracted dialog on reopen and selects duplicate server addresses", async () => {
-  const app = await open("./App.tsx", { platform: "macos", width: 1280, height: 840 });
-  await app.press("id:add-server");
-  await app.type("id:server-name", "未保存");
-  await app.type("id:server-address", "file:///private");
-  await app.press("id:confirm-add-server");
-  await app.press("text:取消");
-  await app.press("id:add-server");
-  expect(app.value("id:server-name")).toBe("");
-  expect(app.value("id:server-address")).toBe("");
-  expect(app.texts()).not.toContain("请填写有效的 HTTP / HTTPS 地址；不要包含账号、密码、查询参数或片段。");
-  await app.type("id:server-address", "https://example.com/");
-  await app.press("id:confirm-add-server");
-  await app.press("id:top-tab-1");
-  await app.press("id:add-server");
-  await app.type("id:server-address", "https://example.com");
-  await app.press("id:confirm-add-server");
-  expect(app.count("id:server-selected-4")).toBe(1);
-  expect(app.count("id:top-tab-5")).toBe(0);
-  expect(app.requests()).toEqual([]);
+test("shows connection failure and supports retry without fake projects", async () => {
+  let fail = true;
+  const app = await open("./App.tsx", {
+    platform: "macos", width: 1280, height: 840,
+    network: { "*": request => fail ? { status: 503 } : mockServer(request) },
+  });
+  await app.waitFor("id:retry-connection");
+  expect(app.count("id:project-tab-p1")).toBe(0);
+  expect(app.texts()).toContain("连接失败");
+  fail = false;
+  await app.press("id:retry-connection");
+  await app.waitFor("id:file-entry-App.tsx");
+  expect(app.texts()).toContain("已连接");
+});
+
+test("handles an empty project list without requesting a made-up project", async () => {
+  const app = await open("./App.tsx", {
+    platform: "macos", width: 1280, height: 840,
+    network: { "*": { body: { data: { listProjects: [] } } } },
+  });
+  await app.waitFor("text:服务器尚未创建项目");
+  expect(app.requests().length).toBe(1);
+  expect(app.count("id:composer-placeholder")).toBe(0);
+});
+
+test("shows workspace query failure without retaining another project's files", async () => {
+  const app = await open("./App.tsx", {
+    platform: "macos", width: 1280, height: 840,
+    network: { "*": request => request.url.includes("NativeWorkspace")
+      ? { body: { errors: [{ message: "access denied" }] } } : mockServer(request) },
+  });
+  await app.waitFor("text:工作区读取失败，请检查服务状态后重试。");
+  expect(app.count("id:file-entry-App.tsx")).toBe(0);
+  expect(app.texts()).not.toContain("access denied");
+});
+
+test("keeps empty folders in the Tree and retries failed child reads", async () => {
+  let fail = true;
+  const app = await open("./App.tsx", {
+    platform: "macos", width: 1280, height: 840,
+    network: { "*": request => request.url.includes("NativeDirectory")
+      ? fail ? { status: 503 } : { body: { data: { listFiles: [] } } }
+      : mockServer(request) },
+  });
+  await app.waitFor("id:file-entry-src");
+  await app.press("id:file-entry-src");
+  await app.waitFor("text:读取失败，收起后展开重试");
+  fail = false;
+  await app.press("id:file-entry-src");
+  await app.press("id:file-entry-src");
+  await app.waitFor("text:空文件夹");
+  expect(app.count("id:file-entry-App.tsx")).toBe(1);
+});
+
+test("clears cached branches when switching projects", async () => {
+  const app = await openApp();
+  await app.press("id:file-entry-src");
+  await app.waitFor("id:file-entry-src/index.ts");
+  await app.press("id:project-tab-p2");
+  await app.waitFor("id:file-entry-App.tsx");
+  expect(app.count("id:file-entry-src/index.ts")).toBe(0);
+  await app.press("id:file-entry-src");
+  await app.waitFor("id:file-entry-src/index.ts");
+  const requests = app.requests().filter(request => request.url.includes("NativeDirectory"));
+  expect(requests.length).toBe(2);
+  expect(new URL(requests[1].url).searchParams.get("variables")).toContain('"projectId":"p2"');
 });

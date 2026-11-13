@@ -6,13 +6,13 @@ import cubeIcon from "../../../assets/cube.svg";
 import leafIcon from "../../../assets/leaf.svg";
 import type { ServerIcon } from "./types";
 
-const variants = [
-  { src: globeIcon, color: "#4478bc" },
-  { src: layersIcon, color: "#8666ad" },
-  { src: cloudIcon, color: "#42919b" },
-  { src: compassIcon, color: "#bc7750" },
-  { src: cubeIcon, color: "#658586" },
-  { src: leafIcon, color: "#60916c" },
+const variants: Omit<ServerIcon, "variant">[] = [
+  { src: globeIcon, color: "teal" },
+  { src: layersIcon, color: "purple" },
+  { src: cloudIcon, color: "teal" },
+  { src: compassIcon, color: "ochre" },
+  { src: cubeIcon, color: "teal" },
+  { src: leafIcon, color: "primary" },
 ];
 
 // Shuffle once, never during rendering; the first six servers are distinct.

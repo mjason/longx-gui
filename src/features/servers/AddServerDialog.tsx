@@ -21,20 +21,20 @@ export function AddServerDialog(props: AddServerDialogProps) {
   }
 
   return <Dialog accessibilityLabel="添加服务器" animation="fade" onOpenChange={event => { if (!event.open) props.onClose(); }}
-    class="w-[420px] self-center mt-20 p-5 gap-3 rounded-xl border border-[#dfe2e8] bg-white shadow-lg" backdropClass="bg-black/20">
-    <Text class="text-base text-[#34383e]">添加服务器</Text>
+    class="w-[420px] self-center mt-20 p-5 gap-3 rounded-xl border border-border bg-background shadow-lg" backdropClass="bg-overlay/20">
+    <Text class="text-base text-foreground">添加服务器</Text>
     <Input testID="server-name" value={name()} onChange={event => name.set(event.value)} placeholder="显示名称（可选）"
-      class="h-9 px-3 rounded-lg border border-[#dfe2e8] text-sm text-[#34383e]" />
+      class="h-9 px-3 rounded-lg border border-border text-sm text-foreground" />
     <Input testID="server-address" autoFocus value={address()} onChange={event => address.set(event.value)} onSubmit={submit}
-      placeholder="https://example.com" class="h-9 px-3 rounded-lg border border-[#dfe2e8] text-sm text-[#34383e]" />
-    <Text class="text-xs text-[#707785]">目前只添加当前窗口的服务器页签，不发起网络连接。</Text>
-    <If when={!!error()}><Text class="text-xs text-red-600">{error()}</Text></If>
+      placeholder="https://example.com" class="h-9 px-3 rounded-lg border border-border text-sm text-foreground" />
+    <Text class="text-xs text-quiet">添加后读取服务器的项目列表；不修改远端数据。</Text>
+    <If when={!!error()}><Text class="text-xs text-destructive">{error()}</Text></If>
     <View class="flex-row justify-end gap-3">
       <View role="button" class="h-8 px-3 justify-center" onPress={props.onClose}>
-        <Text class="text-sm text-[#34383e]">取消</Text>
+        <Text class="text-sm text-foreground">取消</Text>
       </View>
-      <View testID="confirm-add-server" role="button" class="h-8 px-3 justify-center rounded-lg bg-[#d3e3fd]" onPress={submit}>
-        <Text class="text-sm text-[#244b88]">添加</Text>
+      <View testID="confirm-add-server" role="button" class="h-8 px-3 justify-center rounded-lg bg-accent" onPress={submit}>
+        <Text class="text-sm text-primary">添加</Text>
       </View>
     </View>
   </Dialog>;
