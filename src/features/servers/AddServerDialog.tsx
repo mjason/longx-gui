@@ -1,5 +1,6 @@
 import { signal, Text, View } from "nsh";
 import { Dialog, Input } from "nsh/base";
+import { AppButton as Button } from "../../components/AppButton";
 
 interface AddServerDialogProps {
   onAdd: (name: string, address: string) => void;
@@ -21,7 +22,7 @@ export function AddServerDialog(props: AddServerDialogProps) {
   }
 
   return <Dialog accessibilityLabel="添加服务器" animation="fade" onOpenChange={event => { if (!event.open) props.onClose(); }}
-    class="w-[420px] self-center mt-20 p-5 gap-3 rounded-xl border border-border bg-background shadow-lg" backdropClass="bg-overlay/20">
+    class="w-[420px] max-w-[90%] m-auto p-5 gap-3 rounded-xl border border-border bg-background shadow-lg" backdropClass="bg-overlay/20">
     <Text class="text-base text-foreground">添加服务器</Text>
     <Input testID="server-name" value={name()} onChange={event => name.set(event.value)} placeholder="显示名称（可选）"
       class="h-9 px-3 rounded-lg border border-border text-sm text-foreground" />
@@ -30,12 +31,12 @@ export function AddServerDialog(props: AddServerDialogProps) {
     <Text class="text-xs text-quiet">添加后读取服务器的项目列表；不修改远端数据。</Text>
     <If when={!!error()}><Text class="text-xs text-destructive">{error()}</Text></If>
     <View class="flex-row justify-end gap-3">
-      <View role="button" class="h-8 px-3 justify-center" onPress={props.onClose}>
+      <Button class="h-8 px-3" onPress={props.onClose}>
         <Text class="text-sm text-foreground">取消</Text>
-      </View>
-      <View testID="confirm-add-server" role="button" class="h-8 px-3 justify-center rounded-lg bg-accent" onPress={submit}>
+      </Button>
+      <Button testID="confirm-add-server" class="h-8 px-3 rounded-lg bg-accent" onPress={submit}>
         <Text class="text-sm text-primary">添加</Text>
-      </View>
+      </Button>
     </View>
   </Dialog>;
 }

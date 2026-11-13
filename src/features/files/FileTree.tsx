@@ -6,7 +6,11 @@ import type { FileTreeState } from "./treeState";
 
 export function FileTree(props: { state: FileTreeState; onOpen: (file: FileEntry) => void }) {
   const state = props.state;
-  return <Tree testID="file-tree" accessibilityLabel="项目文件目录" class="flex-1 font-sans"
+  // Rebuild only the native viewport when filtering. Large virtualized folder
+  // lists can otherwise retain stale visible-row caches after children shrink.
+  // The controlled selection/expansion and loaded directories stay in state.
+  return <Each of={[state.filter().trim().toLowerCase()]} key={value => value}>{() =>
+  <Tree testID="file-tree" accessibilityLabel="项目文件目录" class="flex-1 font-sans"
     items={state.items()} expanded={state.visibleExpanded()} selected={state.selected()}
     onExpandedChange={event => state.expanded.set(event.expanded)}
     onSelectedChange={event => state.selected.set(event.selected)}
@@ -31,5 +35,6 @@ export function FileTree(props: { state: FileTreeState; onOpen: (file: FileEntry
           class={item.disabled ? "flex-1 font-sans font-normal text-[12px] text-quiet" : "flex-1 font-sans font-normal text-[13px] text-foreground"}
           style={{ numberOfLines: 1, lineHeight: 20 }}>{item.label}</Text>
       </View>
-    } />;
+    } />
+  }</Each>;
 }

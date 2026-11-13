@@ -95,7 +95,7 @@ export function createFileTreeState(options: FileTreeOptions) {
   });
 
   return {
-    items, expanded, selected, entry, expand,
+    items, expanded, selected, entry, expand, filter: options.search,
     visibleExpanded: () => {
       if (!options.search().trim()) return expanded();
       const parents: string[] = [];

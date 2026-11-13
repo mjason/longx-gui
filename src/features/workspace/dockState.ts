@@ -5,13 +5,21 @@ export function createDockState() {
   const files = signal(true);
   const chats = signal(true);
   const auxiliary = signal<"branch" | "bot" | null>(null);
-  const visible = () => files() || chats() || auxiliary() !== null;
-  function close() { files.set(false); chats.set(false); auxiliary.set(null); }
+  const open = signal(true);
+  const visible = () => open() && (files() || chats() || auxiliary() !== null);
+  function close() { open.set(false); }
   return {
-    files, chats, auxiliary, visible, close,
-    selected: (panel: Panel) => panel === "folder" ? files() && !auxiliary()
-      : panel === "chat" ? chats() : auxiliary() === panel,
+    files, chats, auxiliary, open, visible, close,
+    selected: (panel: Panel) => visible() && (panel === "folder" ? files() && !auxiliary()
+      : panel === "chat" ? chats() : auxiliary() === panel),
     toggle(panel: Panel) {
+      if (!open()) {
+        open.set(true);
+        if (panel === "folder") { files.set(true); auxiliary.set(null); }
+        else if (panel === "chat") chats.set(true);
+        else auxiliary.set(panel);
+        return;
+      }
       if (panel === "folder") {
         if (auxiliary()) { auxiliary.set(null); files.set(true); }
         else files.set(!files());
@@ -20,7 +28,7 @@ export function createDockState() {
     },
     toggleSidebar() {
       if (visible()) close();
-      else { files.set(true); chats.set(true); }
+      else { open.set(true); if (!files() && !chats() && !auxiliary()) { files.set(true); chats.set(true); } }
     },
   };
 }

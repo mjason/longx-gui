@@ -1,97 +1,123 @@
-import { token, effect, Scroll, signal, Text, View } from "nsh";
+import { effect, keymap, platform, signal, Text, token, View } from "nsh";
+import { AlertDialog } from "nsh/base";
+import { AppButton as Button } from "../../components/AppButton";
+import { currentWindow } from "nsh/desktop";
 import { Icon } from "../../components/Icon";
 import type { WorkspaceState } from "../../state/workspace";
-import { PanelBar } from "./PanelBar";
-import { createFileTreeState } from "../files/treeState";
 import { ThemeMenu } from "../../theme/ThemeMenu";
 import type { ThemeState } from "../../theme/themes";
+import { createFileTreeState } from "../files/treeState";
+import { createEditorState, documentKey } from "../files/editorState";
+import { GitPanel } from "../git/GitPanel";
+import { createGitState } from "../git/gitState";
+import { ContentPanel } from "./ContentPanel";
 import { createContentTabs } from "./contentTabs";
-import { WorkspaceTabs } from "./WorkspaceTabs";
+import { DockConversations, DockFiles } from "./DockSidebar";
 import { createDockState } from "./dockState";
-import { DockSidebar } from "./DockSidebar";
-import { ComposerPlaceholder } from "./ComposerPlaceholder";
+import { PanelBar } from "./PanelBar";
+import { WorkspaceDock } from "./WorkspaceDock";
 
 export function WorkspaceLayout(props: { workspace: WorkspaceState; theme: ThemeState }) {
   const state = props.workspace;
   const dock = createDockState();
   const search = signal("");
+  const filtering = signal(false);
+  const rootExpanded = signal(true);
   const width = signal(1280);
-  const contentTabs = createContentTabs();
-  const selectedFile = () => { const tab = contentTabs.current(); return tab?.kind === "file" ? tab.file : null; };
-  const selectedThread = () => { const tab = contentTabs.current(); return tab?.kind === "chat" ? tab.thread : null; };
-  const fileTree = createFileTreeState({
-    serverUrl: () => state.currentServer()?.url,
-    projectId: () => state.selectedProject()?.id,
-    entries: () => state.workspaceData().files,
-    search,
+  const tabs = createContentTabs();
+  const revision = signal(0);
+  const editor = createEditorState(() => { revision.set(revision() + 1); void git.refresh(); });
+  const keyFor = (path: string) => documentKey(state.currentServer()?.url ?? "", state.selectedProject()?.id ?? "", path);
+  keymap.bind("mod+s", () => {
+    const tab = tabs.current();
+    if (tab?.kind === "file") void editor.save(keyFor(tab.file.path));
+  });
+  const git = createGitState({
+    url: () => state.currentServer()?.url, projectId: () => state.selectedProject()?.id,
+    enabled: () => dock.auxiliary() === "branch",
+    dirty: path => editor.dirty(keyFor(path)),
+  });
+  let askingClose = false;
+  async function closeTab(id: string) {
+    const tab = tabs.items().find(item => item.id === id);
+    if (tab?.kind !== "file" || !editor.dirty(keyFor(tab.file.path))) { tabs.close(id); return; }
+    if (askingClose) return;
+    const key = keyFor(tab.file.path);
+    askingClose = true;
+    try {
+      const saving = editor.documents()[key]?.saving;
+      const answer = await AlertDialog.show({
+        title: "未保存文件",
+        description: saving ? "正在保存，请等待结果后再关闭。" : `${tab.file.path} 有未保存改动。草稿仅保留在本窗口，关闭前如何处理？`,
+        closeOnEscape: true,
+        actions: saving ? [{ id: "cancel", label: "取消", role: "cancel" }] : [
+          { id: "save", label: "保存并关闭" }, { id: "discard", label: "不保存并关闭", role: "destructive" },
+          { id: "cancel", label: "取消", role: "cancel" },
+        ],
+      });
+      if (keyFor(tab.file.path) !== key) return;
+      if (answer.action === "discard") { editor.discard(key); tabs.close(id); }
+      if (answer.action === "save") {
+        await editor.save(key);
+        if (keyFor(tab.file.path) === key && !editor.dirty(key)) tabs.close(id);
+      }
+    } finally { askingClose = false; }
+  }
+  const tree = createFileTreeState({
+    serverUrl: () => state.currentServer()?.url, projectId: () => state.selectedProject()?.id,
+    entries: () => state.workspaceData().files, search,
   });
   effect(() => {
-    state.selectedServer();
-    state.selectedProject()?.id;
-    search.set("");
-    contentTabs.reset();
+    state.selectedServer(); state.selectedProject()?.id;
+    search.set(""); tabs.reset();
   });
-  const connectionText = () => !state.currentServer() ? "未连接"
-    : state.connection()?.status === "ready" ? "已连接"
+  if (["macos", "windows", "linux"].includes(platform.os)) {
+    effect(() => currentWindow().set({ closeOnPress: editor.dirtyCount() === 0 && !git.busy() }));
+    currentWindow().on("closePress", async () => {
+      if ((!editor.dirtyCount() && !git.busy()) || askingClose) return;
+      askingClose = true;
+      try {
+        const busy = git.busy() || Object.values(editor.documents()).some(doc => doc.saving);
+        const answer = await AlertDialog.show({
+          title: "关闭工作区", description: busy ? "操作正在进行，请等待结果后再关闭。" : "未保存草稿只保留在本窗口。关闭将丢失这些草稿。",
+          closeOnEscape: true,
+          actions: busy ? [{ id: "cancel", label: "返回工作区", role: "cancel" }] : [
+            { id: "discard", label: "丢弃草稿并关闭", role: "destructive" }, { id: "cancel", label: "返回工作区", role: "cancel" },
+          ],
+        });
+        if (answer.action === "discard" && !git.busy() && !Object.values(editor.documents()).some(doc => doc.saving)) currentWindow().close();
+      } finally { askingClose = false; }
+    });
+  }
+  const connectionText = () => !state.currentServer() ? "未连接" : state.connection()?.status === "ready" ? "已连接"
     : state.connection()?.status === "error" ? "连接失败" : "连接中…";
-  return <View testID="workspace-layout" class="flex-1 bg-background font-sans"
-    onLayout={event => width.set(event.bounds.size.width)}>
-    <View class="flex-1 flex-row">
-      <If when={dock.visible()}>
-        <DockSidebar workspace={state} tree={fileTree} tabs={contentTabs} dock={dock} search={search} width={width} />
-      </If>
-      <View testID="workspace-main" class="flex-1">
-        <WorkspaceTabs state={contentTabs} onToggleSidebar={dock.toggleSidebar} />
-        <View testID="workspace-context" class="h-7 px-4 flex-row items-center gap-3 border-b border-border bg-background">
-          <Text class="text-xs text-muted-foreground">{state.selectedProject()?.name ?? "未选择项目"}</Text>
-          <Text class="text-xs text-quiet">/</Text>
-          <Text class="flex-1 text-xs text-muted-foreground" style={{ numberOfLines: 1 }}>{selectedFile()?.path ?? "会话"}</Text>
-          <If when={width() >= 900 && !selectedFile()}>
-            <Text class="text-xs text-purple">Agent 尚未接入</Text>
-          </If>
-        </View>
-        <Scroll testID="workspace-body" class="flex-1">
-          <View class="px-9 py-7 gap-4">
-            <If when={!state.currentServer()}>
-              <Text class="text-base text-foreground">添加服务器开始使用</Text>
-            </If>
-            <If when={!!state.currentServer() && state.connection()?.status === "loading"}>
-              <Text class="text-sm text-muted-foreground">正在连接服务器…</Text>
-            </If>
-            <If when={state.connection()?.status === "error"}>
-              <Text class="text-sm text-destructive">{state.connection()?.error}</Text>
-              <View testID="retry-connection" role="button" onPress={state.refresh} class="self-start px-4 py-2 rounded bg-accent">
-                <Text class="text-sm text-primary">重新连接</Text>
-              </View>
-            </If>
-            <If when={state.connection()?.status === "ready"}>
-              <View class="flex-row items-center gap-2">
-                <Icon name={selectedFile() ? "file" : "chat"} size={18} color={token("primary")} />
-                <Text class="text-base font-medium text-foreground">{selectedFile()?.name ?? selectedThread()?.title ?? state.selectedProject()?.name ?? "暂无项目"}</Text>
-              </View>
-              <Text class="text-[13px] text-muted-foreground" style={{ numberOfLines: 1 }}>
-                {selectedFile()?.path ?? state.selectedProject()?.rootPath ?? "服务器尚未创建项目"}
-              </Text>
-              <Text class="text-[13px] text-muted-foreground">
-                {selectedFile() ? "文件预览将在后续接入" : selectedThread() ? "会话内容将在后续接入" : "从左侧选择文件或会话"}
-              </Text>
-            </If>
-          </View>
-        </Scroll>
-        <If when={!!state.selectedProject() && !selectedFile()}><ComposerPlaceholder /></If>
-      </View>
-    </View>
+  return <View testID="workspace-layout" class="flex-1 bg-background font-sans" onLayout={event => width.set(event.bounds.size.width)}>
+    <WorkspaceDock tabs={tabs} dock={dock} onClose={id => { void closeTab(id); }}
+      projectName={state.selectedProject()?.name ?? "未选择项目"} conversationCount={state.workspaceData().threads.length}
+      rootExpanded={rootExpanded}
+      dirty={path => editor.dirty(keyFor(path))} onSearch={() => {
+        filtering.set(!filtering()); if (!filtering()) search.set("");
+      }} renderPanel={id => {
+        if (id === "files") return <DockFiles workspace={state} tree={tree} tabs={tabs} search={search}
+          filtering={filtering} rootExpanded={rootExpanded} />;
+        if (id === "conversations") return <DockConversations workspace={state} tabs={tabs} />;
+        if (id === "git") return <GitPanel state={git} onDiff={tabs.openDiff}
+          scope={JSON.stringify([state.currentServer()?.url, state.selectedProject()?.id])} projectName={state.selectedProject()?.name ?? "未选择项目"} />;
+        if (id === "agent") return <Text class="p-4 text-[13px] text-muted-foreground">智能体功能将在后续接入。</Text>;
+        return <ContentPanel id={id} workspace={state} tabs={tabs} editor={editor} git={git} revision={revision()} />;
+      }} />
     <View testID="workspace-status" class="h-6 px-2 flex-row items-center gap-3 border-t border-border bg-muted">
       <PanelBar selected={dock.selected} onSelect={dock.toggle} />
+      <Button testID="toggle-sidebar" accessibilityLabel="切换侧栏" onPress={dock.toggleSidebar}
+        class="h-5 w-7 items-center justify-center rounded hover:bg-accent"><Icon name="panel" size={15} /></Button>
       <View class="h-[6px] w-[6px] rounded-full" style={{ backgroundColor: state.connection()?.status === "ready" ? token("primary") : token("quiet") }} />
-      <Text testID="connection-label" class="text-xs font-normal text-muted-foreground">{connectionText()}</Text>
-      <Text class="flex-1 text-xs font-normal text-muted-foreground" style={{ numberOfLines: 1 }}>
+      <Text testID="connection-label" class="text-xs text-muted-foreground">{connectionText()}</Text>
+      <Text class="flex-1 text-xs text-muted-foreground" style={{ numberOfLines: 1 }}>
         {width() < 900 ? state.currentServer()?.name ?? "" : state.currentServer()?.url ?? ""}
       </Text>
-      <If when={width() >= 900}>
-        <Text class="text-xs font-normal text-muted-foreground">{state.selectedProject()?.name ?? ""}</Text>
-      </If>
+      <If when={width() >= 900}><Text class="text-xs text-muted-foreground">{state.selectedProject()?.name ?? ""}</Text></If>
       <ThemeMenu theme={props.theme} />
+      <If when={editor.dirtyCount() > 0}><Text class="text-xs text-ochre">草稿 {editor.dirtyCount()}</Text></If>
     </View>
   </View>;
 }

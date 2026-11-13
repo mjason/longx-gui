@@ -1,4 +1,4 @@
-/** The server's read-only GraphQL contract lives in ../longx/priv/schema.graphql. */
+/** GraphQL contract: ../longx/priv/schema.graphql. Reads use GET. */
 export interface Project {
   id: string;
   name: string;
@@ -20,7 +20,7 @@ export interface ThreadSummary {
   status: string;
 }
 
-async function query<T>(baseUrl: string, document: string, variables: Record<string, string>, signal: AbortSignal): Promise<T> {
+export async function query<T>(baseUrl: string, document: string, variables: Record<string, unknown>, signal: AbortSignal): Promise<T> {
   // GET is a standard GraphQL query transport. No browser cookies or CSRF
   // token are needed for these read-only calls; never send mutations here.
   const url = `${baseUrl}/gql?${new URLSearchParams({ query: document, variables: JSON.stringify(variables) })}`;

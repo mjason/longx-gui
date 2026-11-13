@@ -20,5 +20,18 @@ export function mockServer(request: StubRequest): StubResponse {
   if (query.includes("NativeDirectory")) return { body: { data: { listFiles: [
     { name: "index.ts", path: `${variables.path}/index.ts`, kind: "file", size: 32 },
   ] } } };
+  if (query.includes("NativeReadFile")) return { body: { data: { readFile: {
+    path: variables.path, content: "export const value = 1;\n", binary: false, truncated: false, size: 24,
+  } } } };
+  if (query.includes("NativeGitStatus")) return { body: { data: { gitChanges: {
+    repository: true, branch: "main", head: "1234567890", merging: false, ahead: 0, behind: 0,
+    changes: [{ path: "App.tsx", status: "modified" }, { path: "README.md", status: "untracked" }],
+  } } } };
+  if (query.includes("NativeGitLog")) return { body: { data: { gitLog: [
+    { sha: "1234567890", subject: "Initial workspace", author: "Test", at: "2026-11-13T12:00:00Z" },
+  ] } } };
+  if (query.includes("NativeGitDiff")) return { body: { data: { gitFileDiff: {
+    binary: false, diff: "--- a/App.tsx\n+++ b/App.tsx\n@@ -1 +1 @@\n-export const value = 0;\n+export const value = 1;\n",
+  } } } };
   return { status: 400 };
 }
