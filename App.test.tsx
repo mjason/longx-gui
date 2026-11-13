@@ -92,3 +92,25 @@ test("assigns distinct icons and keeps them stable through hover and selection",
     expect(app.count(`id:server-icon-${index + 1}-${assigned[index]}`)).toBe(1);
   }
 });
+
+test("resets the extracted dialog on reopen and selects duplicate server addresses", async () => {
+  const app = await open("./App.tsx", { platform: "macos", width: 1280, height: 840 });
+  await app.press("id:add-server");
+  await app.type("id:server-name", "未保存");
+  await app.type("id:server-address", "file:///private");
+  await app.press("id:confirm-add-server");
+  await app.press("text:取消");
+  await app.press("id:add-server");
+  expect(app.value("id:server-name")).toBe("");
+  expect(app.value("id:server-address")).toBe("");
+  expect(app.texts()).not.toContain("请填写有效的 HTTP / HTTPS 地址；不要包含账号、密码、查询参数或片段。");
+  await app.type("id:server-address", "https://example.com/");
+  await app.press("id:confirm-add-server");
+  await app.press("id:top-tab-1");
+  await app.press("id:add-server");
+  await app.type("id:server-address", "https://example.com");
+  await app.press("id:confirm-add-server");
+  expect(app.count("id:server-selected-4")).toBe(1);
+  expect(app.count("id:top-tab-5")).toBe(0);
+  expect(app.requests()).toEqual([]);
+});

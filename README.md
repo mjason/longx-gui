@@ -10,3 +10,26 @@
 
 “＋”可输入名称和地址，新增当前窗口内的本地服务器页签。初始三个页签为样式占位；尚未接入网络连接、持久化或其他业务功能，也没有 WebView。
 后续实现等待用户逐步指导，不沿用上一版架构。
+
+## 代码组织
+
+`App.tsx` 是 NSH 入口，仅负责窗口配置、组件组装和弹窗开关。
+
+```text
+src/
+  features/
+    servers/
+      ServerTabBar.tsx     # 标题栏布局、横向滚动、悬停与分隔线显示规则
+      ServerTab.tsx        # 单个标签、圆角、图标、关闭按钮与分隔线绘制
+      AddServerDialog.tsx  # 添加表单、输入状态和错误提示
+      icons.ts            # 图标集合与稳定随机分配
+      types.ts            # 服务器与图标数据类型
+    projects/
+      ProjectSwitcher.tsx # 项目切换栏
+  state/
+    workspace.ts          # 每窗口创建的服务器列表与项目选择状态
+assets/                   # 本地 SVG 资源
+App.test.tsx              # 入口级交互回归测试
+```
+
+组件通过响应式读取函数和事件回调协作；跨组件状态由 `createWorkspaceState()` 创建，不使用全局单例。悬停、表单输入等临时状态保留在对应组件内。
