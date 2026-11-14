@@ -1,6 +1,6 @@
 {
   "name": "longx-gui",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Development quality tooling for the native NSH application.",
   "scripts": {
@@ -12,7 +12,8 @@
     "typecheck": "node scripts/nsh.mjs check",
     "test": "node scripts/nsh.mjs test",
     "build": "node scripts/nsh.mjs build",
-    "quality": "npm run check && npm run typecheck && npm test && npm run build"
+    "quality": "npm run check && npm run typecheck && npm test && npm run build",
+    "release:prepare": "node scripts/prepare-release.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.7"

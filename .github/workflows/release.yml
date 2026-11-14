@@ -1,0 +1,119 @@
+name: Prepare signed release draft
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "full: macOS Apple Silicon + OTA; ota: signed TSX only"
+        type: choice
+        options: [full, ota]
+        default: ota
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: macos-15
+    timeout-minutes: 60
+    environment: release
+    permissions:
+      contents: write
+    env:
+      RELEASE_MODE: ${{ inputs.mode }}
+      NSH_VERSION: v0.5.0
+      NSH_KEY_DIR: ${{ runner.temp }}/longx-signing
+      MACOS_NOTARIZE: ${{ inputs.mode == 'full' && '1' || '0' }}
+      APPLE_KEYCHAIN_PATH: ${{ runner.temp }}/longx-signing.keychain-db
+      APPLE_API_KEY_PATH: ${{ runner.temp }}/longx-signing/AuthKey.p8
+      APPLE_SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install the pinned NSH distribution and verify its checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64 || { echo "Use an Apple Silicon runner for the first full release."; exit 1; }
+          NSH_DOWNLOAD="$RUNNER_TEMP/nsh-download"
+          mkdir -p "$NSH_DOWNLOAD"
+          NSH_URL="https://github.com/longbridge/nsh/releases/download/$NSH_VERSION/nsh-macos-arm64.tar.gz"
+          curl --proto '=https' --tlsv1.2 -fLsS "$NSH_URL" -o "$NSH_DOWNLOAD/nsh-macos-arm64.tar.gz"
+          curl --proto '=https' --tlsv1.2 -fLsS "$NSH_URL.sha256" -o "$NSH_DOWNLOAD/nsh-macos-arm64.tar.gz.sha256"
+          (cd "$NSH_DOWNLOAD" && shasum -a 256 -c nsh-macos-arm64.tar.gz.sha256)
+          tar -xzf "$NSH_DOWNLOAD/nsh-macos-arm64.tar.gz" -C "$NSH_DOWNLOAD"
+          echo "NSH_BIN=$NSH_DOWNLOAD/nsh/bin/nsh" >> "$GITHUB_ENV"
+      - run: npm ci
+      - run: npm run quality
+      - run: node --test scripts/verify-release.test.mjs
+      - name: Write ephemeral release and manifest keys
+        env:
+          RELEASE_KEY: ${{ secrets.NSH_RELEASE_KEY }}
+          UPDATE_KEY: ${{ secrets.NSH_UPDATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$RELEASE_KEY" && test -n "$UPDATE_KEY" || { echo "Configure the release environment signing secrets first."; exit 1; }
+          umask 077
+          mkdir -p "$NSH_KEY_DIR"
+          printf '%s\n' "$RELEASE_KEY" > "$NSH_KEY_DIR/release.secret"
+          printf '%s\n' "$UPDATE_KEY" > "$NSH_KEY_DIR/update.secret"
+      - name: Import Developer ID and notarization credentials into an ephemeral keychain
+        if: inputs.mode == 'full'
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$APPLE_CERTIFICATE_P12" && test -n "$APPLE_CERTIFICATE_PASSWORD" && test -n "$APPLE_API_KEY_P8"
+          test -n "$APPLE_SIGN_IDENTITY" && test -n "$APPLE_API_KEY_ID" && test -n "$APPLE_API_ISSUER"
+          umask 077
+          printf '%s' "$APPLE_CERTIFICATE_P12" | base64 -D > "$NSH_KEY_DIR/developer-id.p12"
+          printf '%s\n' "$APPLE_API_KEY_P8" > "$APPLE_API_KEY_PATH"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          echo "::add-mask::$KEYCHAIN_PASSWORD"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$APPLE_KEYCHAIN_PATH"
+          security set-keychain-settings -lut 3600 "$APPLE_KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$APPLE_KEYCHAIN_PATH"
+          security import "$NSH_KEY_DIR/developer-id.p12" -P "$APPLE_CERTIFICATE_PASSWORD" -t cert -f pkcs12 -k "$APPLE_KEYCHAIN_PATH" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$APPLE_KEYCHAIN_PATH"
+      - name: Build and sign locally; this does not publish
+        run: npm run release:prepare -- "$RELEASE_MODE"
+      - name: Verify manifest signature and referenced files
+        shell: bash
+        run: |
+          if [ "$RELEASE_MODE" = full ]; then
+            node scripts/verify-release.mjs --require-notarized
+          else
+            node scripts/verify-release.mjs
+          fi
+      - name: Create a draft, never a public release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p 'JSON.parse(require("fs").readFileSync("nsh.json")).version')"
+          OUT="dist/v$VERSION"
+          ASSETS=("$OUT/"*.nshpkg "$OUT/latest.json" "$OUT/latest.json.sig" "$OUT/SHA256SUMS")
+          if [ "$RELEASE_MODE" = full ]; then ASSETS+=("$OUT/"*.tar.gz "$OUT/MACOS_DISTRIBUTION.json"); fi
+          gh release create "v$VERSION" "${ASSETS[@]}" --draft --target "$GITHUB_SHA" --title "Longx GUI v$VERSION" --notes-file "$OUT/RELEASE_NOTES.md"
+      - name: Remove ephemeral signing keys
+        if: always()
+        shell: bash
+        run: |
+          node -e 'const fs=require("fs"),p=require("path"); for(const name of ["release.secret","update.secret","developer-id.p12","AuthKey.p8"]){const file=p.join(process.env.NSH_KEY_DIR,name); if(fs.existsSync(file)) fs.unlinkSync(file)}'
+          if [ -f "$APPLE_KEYCHAIN_PATH" ]; then security delete-keychain "$APPLE_KEYCHAIN_PATH"; fi

@@ -1,7 +1,7 @@
 import { Menu } from "nsh/desktop";
 
 /** Keep standard native editing/window roles when adding our Settings entry. */
-export function installApplicationMenu(openSettings: () => void) {
+export function installApplicationMenu(openSettings: () => void, openUpdates?: () => void) {
   Menu.setApplicationMenu([
     {
       label: "Longx GUI",
@@ -9,6 +9,7 @@ export function installApplicationMenu(openSettings: () => void) {
         { role: "about" },
         { type: "separator" },
         { label: "Settings…", shortcut: "mod+,", onSelect: openSettings },
+        ...(openUpdates ? [{ label: "检查更新…", onSelect: openUpdates }] : []),
         { type: "separator" },
         { role: "hide" },
         { role: "hideOthers" },

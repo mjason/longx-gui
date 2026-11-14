@@ -4,6 +4,7 @@ import { AppButton as Button } from "../../components/AppButton";
 import { Icon } from "../../components/Icon";
 import { type ThemeState, themes } from "../../theme/themes";
 import type { ProjectConnection } from "../projects/ProjectDirectoryDialog";
+import { UpdatePanel } from "../updates/UpdatePanel";
 import { type EditorSettings, editorFonts } from "./editorSettings";
 import { ServerSettings } from "./ServerSettings";
 
@@ -15,11 +16,12 @@ export function SettingsDialog(props: {
   isCurrentServer?: () => boolean;
   onServerSaved?: () => void;
   onBusy?: (busy: boolean) => void;
+  initialSection?: "local" | "updates";
 }) {
   const settings = props.settings;
   const value = settings.current;
   const compact = signal(false);
-  const section = signal<"local" | "server">("local"),
+  const section = signal<"local" | "server" | "updates">(props.initialSection ?? "local"),
     remoteBusy = signal(false);
   const fieldClass = () => (compact() ? "gap-2" : "flex-row items-center gap-4");
   const choiceClass =
@@ -79,6 +81,15 @@ export function SettingsDialog(props: {
           class="h-8 px-3 flex-row items-center justify-center rounded selected:bg-accent"
         >
           <Text class="text-sm text-foreground">模型与运行</Text>
+        </Tab>
+        <Tab
+          testID="settings-updates-tab"
+          selected={section() === "updates"}
+          disabled={remoteBusy()}
+          onPress={() => section.set("updates")}
+          class="h-8 px-3 flex-row items-center justify-center rounded selected:bg-accent"
+        >
+          <Text class="text-sm text-foreground">关于与更新</Text>
         </Tab>
       </Tabs>
       <If when={section() === "local"}>
@@ -278,6 +289,13 @@ export function SettingsDialog(props: {
             <Text class="text-sm text-foreground">恢复默认</Text>
           </Button>
         </View>
+      </If>
+      <If when={section() === "updates"}>
+        <Scroll class="flex-1">
+          <View class="p-6">
+            <UpdatePanel />
+          </View>
+        </Scroll>
       </If>
       <If when={section() === "server" && !!props.connection}>
         <Scroll testID="settings-server-body" class="flex-1">

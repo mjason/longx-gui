@@ -2,6 +2,8 @@
 
 应用图标沿用 Longx 蓝色渐变的几何 LX 标记，搭配浅色圆角底板。源稿为 `assets/app-icon.svg`，`nsh.json` 引用生成的 1024×1024 `assets/app-icon.png`。在 macOS 上运行 `swift scripts/render-app-icon.swift` 可从源稿重新生成 PNG；NSH 打包时生成平台图标资源，开发宿主的 Dock 图标不一定随热更新改变。
 
+首版准备为 `v0.1.0` / build 1，macOS Apple Silicon。设置「关于与更新」和应用菜单提供签名 OTA / 整包升级入口，下载和重启需要用户确认。GitHub Actions 的 `Prepare signed release draft` 支持 Developer ID 签名、公证和 OTA，只创建发布草稿；证书申请、GitHub Secrets 配置与发布检查清单见 `release/README.md`。
+
 已重新初始化为最小 NSH TypeScript 原生应用。
 
 当前包含与系统窗口标题栏合并的浏览器式服务器页签、项目切换栏和原生工作区基础布局。系统窗口按钮与页签处于同一行，不再单独显示标题行。

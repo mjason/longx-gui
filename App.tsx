@@ -1,6 +1,7 @@
-import { keymap, mount, platform, type ScrollRef, signal, View } from "nsh";
+import { effect, keymap, mount, platform, type ScrollRef, signal, Text, View } from "nsh";
 import { currentWindow } from "nsh/desktop";
 import type { Project } from "./src/api/client";
+import { AppButton as Button } from "./src/components/AppButton";
 import {
   type ProjectConnection,
   ProjectDirectoryDialog,
@@ -15,6 +16,7 @@ import { installApplicationMenu } from "./src/features/settings/applicationMenu"
 import { createEditorSettings } from "./src/features/settings/editorSettings";
 import { SettingsDialog } from "./src/features/settings/SettingsDialog";
 import { invalidateComposerCatalog } from "./src/features/threads/ComposerModels";
+import { appUpdates } from "./src/features/updates/updates";
 import { WorkspaceLayout } from "./src/features/workspace/WorkspaceLayout";
 import { createWorkspaceState } from "./src/state/workspace";
 import { createThemeState } from "./src/theme/themes";
@@ -24,6 +26,8 @@ function App() {
   const workspace = createWorkspaceState();
   const adding = signal(false);
   const settingsOpen = signal(false);
+  const settingsSection = signal<"local" | "updates">("local");
+  effect(() => appUpdates.start());
   const settings = createEditorSettings();
   const quickSwitch = signal(false);
   const navigation = signal<{ kind: "home" | "open"; version: number } | undefined>(undefined);
@@ -48,8 +52,15 @@ function App() {
   function openSettings() {
     if (projectBusy() || directoryTarget() || projectSettings() || quickSwitch()) return;
     adding.set(false);
+    settingsSection.set("local");
     settingsConnection.set(connection());
     settingsOpen.set(true);
+  }
+  function openUpdates() {
+    if (projectBusy() || directoryTarget() || projectSettings() || quickSwitch()) return;
+    openSettings();
+    settingsSection.set("updates");
+    void appUpdates.check();
   }
   function chooseProject(id: string) {
     workspace.selectProject(id);
@@ -72,7 +83,7 @@ function App() {
 
   if (["macos", "windows", "linux"].includes(platform.os)) {
     currentWindow().set({ titleBar: { style: "hidden", height: 40 } });
-    installApplicationMenu(openSettings);
+    installApplicationMenu(openSettings, openUpdates);
   }
 
   return (
@@ -87,6 +98,16 @@ function App() {
           scroll = value;
         }}
       />
+      <If when={appUpdates.phase() === "available" || appUpdates.phase() === "ready"}>
+        <View testID="update-banner" class="px-4 py-2 flex-row items-center gap-3 bg-accent">
+          <Text class="flex-1 text-xs text-foreground">
+            {`Longx GUI ${appUpdates.candidate()?.value.version} ${appUpdates.phase() === "ready" ? "已就绪，可稍后重启应用" : "可更新"}`}
+          </Text>
+          <Button class="h-7 px-3 rounded hover:bg-background" onPress={openUpdates}>
+            <Text class="text-xs text-primary">查看更新</Text>
+          </Button>
+        </View>
+      </If>
       <If when={workspace.servers().length > 0}>
         <ProjectSwitcher
           projects={workspace.projects}
@@ -129,6 +150,7 @@ function App() {
       <If when={settingsOpen()}>
         <SettingsDialog
           settings={settings}
+          initialSection={settingsSection()}
           theme={theme}
           connection={settingsConnection()}
           isCurrentServer={() => !!settingsConnection() && current(settingsConnection()!)}

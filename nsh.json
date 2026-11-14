@@ -1,9 +1,17 @@
 {
   "name": "Longx GUI",
-  "id": "com.example.longxgui",
-  "version": "1.0.0",
+  "id": "io.github.mjason.longxgui",
+  "version": "0.1.0",
   "build": 1,
   "icon": "assets/app-icon.png",
+  "minRuntime": "0.5.0",
+  "updater": {
+    "github": "mjason/longx-gui",
+    "publicKey": "rnQ0iN4Hbn1Mgi7L5tU7OnwMQqi+YiZTUK/XIEtuxCk=",
+    "packages": {
+      "roots": ["ukPcKxX3STZq0o9d8q8khChNxMa3XaLQ/Nv6o5cvOTI="]
+    }
+  },
   "appearance": "light",
   "theme": {
     "cssVars": {
