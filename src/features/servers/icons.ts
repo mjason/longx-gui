@@ -1,8 +1,8 @@
-import globeIcon from "../../../assets/globe.svg";
-import layersIcon from "../../../assets/layers.svg";
 import cloudIcon from "../../../assets/cloud.svg";
 import compassIcon from "../../../assets/compass.svg";
 import cubeIcon from "../../../assets/cube.svg";
+import globeIcon from "../../../assets/globe.svg";
+import layersIcon from "../../../assets/layers.svg";
 import leafIcon from "../../../assets/leaf.svg";
 import type { ServerIcon } from "./types";
 

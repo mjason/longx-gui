@@ -1,6 +1,6 @@
-import { computed, effect, signal, untracked, type Accessor } from "nsh";
+import { type Accessor, computed, effect, signal, untracked } from "nsh";
 import type { TreeItem } from "nsh/base";
-import { listFiles, type FileEntry } from "../../api/client";
+import { type FileEntry, listFiles } from "../../api/client";
 
 interface Directory {
   status: "loading" | "ready" | "error";
@@ -42,30 +42,40 @@ export function createFileTreeState(options: FileTreeOptions) {
   function entry(id: string): FileEntry | undefined {
     if (!id.startsWith("entry:")) return undefined;
     const path = id.slice(6);
-    return options.entries().find(file => file.path === path)
-      ?? Object.values(directories()).flatMap(directory => directory.entries).find(file => file.path === path);
+    return (
+      options.entries().find((file) => file.path === path) ??
+      Object.values(directories())
+        .flatMap((directory) => directory.entries)
+        .find((file) => file.path === path)
+    );
   }
 
   async function expand(id: string) {
     const file = entry(id);
     const serverUrl = options.serverUrl();
     const projectId = options.projectId();
-    if (!file || file.kind !== "dir" || !serverUrl || !projectId) return;
+    if (file?.kind !== "dir" || !serverUrl || !projectId) return;
     const cached = directories()[file.path];
     if (cached?.status === "ready" || cached?.status === "loading") return;
     const controller = new AbortController();
     const version = generation;
     requests.set(file.path, controller);
     const timeout = setTimeout(() => controller.abort(), 10000);
-    directories.update(values => ({ ...values, [file.path]: { status: "loading", entries: [] } }));
+    directories.update((values) => ({
+      ...values,
+      [file.path]: { status: "loading", entries: [] },
+    }));
     try {
       const entries = await listFiles(serverUrl, projectId, file.path, controller.signal);
       if (version === generation) {
-        directories.update(values => ({ ...values, [file.path]: { status: "ready", entries } }));
+        directories.update((values) => ({ ...values, [file.path]: { status: "ready", entries } }));
       }
     } catch {
       if (version === generation) {
-        directories.update(values => ({ ...values, [file.path]: { status: "error", entries: [] } }));
+        directories.update((values) => ({
+          ...values,
+          [file.path]: { status: "error", entries: [] },
+        }));
       }
     } finally {
       clearTimeout(timeout);
@@ -77,31 +87,52 @@ export function createFileTreeState(options: FileTreeOptions) {
     const cache = directories();
     const search = options.search().trim().toLowerCase();
     function build(entries: FileEntry[]): TreeItem[] {
-      return entries.flatMap(file => {
+      return entries.flatMap((file) => {
         const directory = cache[file.path];
         const children = file.kind === "dir" ? build(directory?.entries ?? []) : undefined;
         if (search && !file.name.toLowerCase().includes(search) && !children?.length) return [];
-        return [{
-          id: `entry:${file.path}`, label: file.name,
-          ...(children ? { children: children.length ? children : [{
-            id: `status:${file.path}`, disabled: true,
-            label: directory?.status === "error" ? "读取失败，收起后展开重试"
-              : directory?.status === "ready" ? "空文件夹" : "正在读取…",
-          }] } : {}),
-        }];
+        return [
+          {
+            id: `entry:${file.path}`,
+            label: file.name,
+            ...(children
+              ? {
+                  children: children.length
+                    ? children
+                    : [
+                        {
+                          id: `status:${file.path}`,
+                          disabled: true,
+                          label:
+                            directory?.status === "error"
+                              ? "读取失败，收起后展开重试"
+                              : directory?.status === "ready"
+                                ? "空文件夹"
+                                : "正在读取…",
+                        },
+                      ],
+                }
+              : {}),
+          },
+        ];
       });
     }
     return build(options.entries());
   });
 
   return {
-    items, expanded, selected, entry, expand, filter: options.search,
+    items,
+    expanded,
+    selected,
+    entry,
+    expand,
+    filter: options.search,
     visibleExpanded: () => {
       if (!options.search().trim()) return expanded();
       const parents: string[] = [];
       function visit(items: TreeItem[]) {
         for (const item of items) {
-          if (item.children?.some(child => !child.disabled)) {
+          if (item.children?.some((child) => !child.disabled)) {
             parents.push(item.id);
             visit(item.children);
           }

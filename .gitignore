@@ -1,4 +1,5 @@
 .nsh/
+node_modules/
 target/
 .tools/
 .longx/local/

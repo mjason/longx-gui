@@ -1,9 +1,12 @@
-import { expect, open, test, type App } from "nsh/test";
+import { type App, expect, open, test } from "nsh/test";
 import { mockServer } from "./tests/fixtures/server";
 
 async function openApp() {
   const app = await open("./App.tsx", {
-    platform: "macos", width: 1280, height: 840, network: { "*": mockServer },
+    platform: "macos",
+    width: 1280,
+    height: 840,
+    network: { "*": mockServer },
   });
   await app.waitFor("id:file-entry-App.tsx");
   return app;
@@ -41,21 +44,34 @@ test("switches themes live without resetting workspace or refetching files", asy
 });
 
 test("restores saved theme and falls back safely for unknown preferences", async () => {
-  const app = await open("./App.tsx", { platform: "macos", width: 1280, height: 840,
-    storage: { "appearance.theme": "dark" }, network: { "*": mockServer } });
+  const app = await open("./App.tsx", {
+    platform: "macos",
+    width: 1280,
+    height: 840,
+    storage: { "appearance.theme": "dark" },
+    network: { "*": mockServer },
+  });
   await app.waitFor("text:深色");
   expect(app.storage()["appearance.theme"]).toBe("dark");
-  const fallback = await open("./App.tsx", { platform: "macos", width: 1280, height: 840,
-    storage: { "appearance.theme": "removed-theme" }, network: { "*": mockServer } });
+  const fallback = await open("./App.tsx", {
+    platform: "macos",
+    width: 1280,
+    height: 840,
+    storage: { "appearance.theme": "removed-theme" },
+    network: { "*": mockServer },
+  });
   await fallback.waitFor("id:file-entry-App.tsx");
   expect(fallback.texts()).toContain("浅色");
 });
 
 test("keeps legacy theme preferences after removing the old theme name", async () => {
-  const app = await open("./App.tsx", { platform: "macos",
-    storage: { "appearance.theme": "monokai-dark" }, network: { "*": mockServer } });
+  const app = await open("./App.tsx", {
+    platform: "macos",
+    storage: { "appearance.theme": "monokai-dark" },
+    network: { "*": mockServer },
+  });
   await app.waitFor("text:深色");
-  expect(app.texts().some(text => text.includes("Monokai"))).toBe(false);
+  expect(app.texts().some((text) => text.includes("Monokai"))).toBe(false);
 });
 
 test("retains separate file and conversation tabs with selection and close behavior", async () => {
@@ -93,7 +109,16 @@ test("retains separate file and conversation tabs with selection and close behav
 
 test("connects the local server and renders the real-data workspace layout", async () => {
   const app = await openApp();
-  for (const id of ["app-root", "top-bar", "project-bar", "workspace-layout", "panel-bar", "workspace-dock", "workspace-main", "workspace-status"]) {
+  for (const id of [
+    "app-root",
+    "top-bar",
+    "project-bar",
+    "workspace-layout",
+    "panel-bar",
+    "workspace-dock",
+    "workspace-main",
+    "workspace-status",
+  ]) {
     expect(app.count(`id:${id}`)).toBe(1);
   }
   expect(app.count("id:top-tab-1")).toBe(1);
@@ -111,7 +136,14 @@ test("connects the local server and renders the real-data workspace layout", asy
   expect(app.texts()).toContain("longx-gui");
   expect(app.texts()).toContain("已连接");
   expect(app.requests().length).toBeGreaterThan(1);
-  expect(app.requests().every(request => request.method === "GET" && request.url.startsWith("http://127.0.0.1:7788/gql?"))).toBe(true);
+  expect(
+    app
+      .requests()
+      .every(
+        (request) =>
+          request.method === "GET" && request.url.startsWith("http://127.0.0.1:7788/gql?"),
+      ),
+  ).toBe(true);
   const window = app.window("main").state()!;
   expect(window.bounds.size.height - window.contentBounds.size.height).toBeLessThan(4);
 });
@@ -121,7 +153,8 @@ test("toggles independent bottom-bar docks without clearing file cache or conten
   await app.press("id:file-entry-src");
   await app.waitFor("id:file-entry-src/index.ts");
   await app.press("id:thread-entry-t1");
-  const directoryReads = () => app.requests().filter(request => request.url.includes("NativeDirectory")).length;
+  const directoryReads = () =>
+    app.requests().filter((request) => request.url.includes("NativeDirectory")).length;
   const requests = directoryReads();
   await app.press("id:nav-folder");
   expect(app.count("id:files-dock")).toBe(0);
@@ -183,7 +216,8 @@ test("uses a native lazy Tree and opens files on keyboard activation", async () 
   await app.press("id:file-entry-src");
   await app.waitFor("id:file-entry-src/index.ts");
   expect(app.count("id:file-entry-App.tsx")).toBe(1);
-  const directoryRequests = () => app.requests().filter(request => request.url.includes("NativeDirectory")).length;
+  const directoryRequests = () =>
+    app.requests().filter((request) => request.url.includes("NativeDirectory")).length;
   expect(directoryRequests()).toBe(1);
   await app.press("id:file-entry-src");
   expect(app.count("id:file-entry-src/index.ts")).toBe(0);
@@ -207,7 +241,7 @@ test("uses a native lazy Tree and opens files on keyboard activation", async () 
   expect(app.texts()).toContain("界面设计");
   expect(app.texts()).toContain("会话内容将在后续接入");
   expect(app.count("id:composer-placeholder")).toBe(1);
-  expect(app.requests().every(request => request.method === "GET")).toBe(true);
+  expect(app.requests().every((request) => request.method === "GET")).toBe(true);
 });
 
 test("uses Tree arrow keys for selection and Enter for file activation", async () => {
@@ -222,13 +256,30 @@ test("uses Tree arrow keys for selection and Enter for file activation", async (
 });
 
 test("filters a large loaded native tree after focusing a document panel", async () => {
-  const app = await open("./App.tsx", { platform: "macos", width: 1280, height: 840, network: { "*": request => {
-    const query = new URL(request.url).searchParams.get("query") ?? "";
-    if (query.includes("NativeDirectory")) return { body: { data: { listFiles: Array.from({ length: 200 }, (_, index) => ({
-      name: `item-${index}.ts`, path: `src/item-${index}.ts`, kind: "file", size: 10,
-    })) } } };
-    return mockServer(request);
-  } } });
+  const app = await open("./App.tsx", {
+    platform: "macos",
+    width: 1280,
+    height: 840,
+    network: {
+      "*": (request) => {
+        const query = new URL(request.url).searchParams.get("query") ?? "";
+        if (query.includes("NativeDirectory"))
+          return {
+            body: {
+              data: {
+                listFiles: Array.from({ length: 200 }, (_, index) => ({
+                  name: `item-${index}.ts`,
+                  path: `src/item-${index}.ts`,
+                  kind: "file",
+                  size: 10,
+                })),
+              },
+            },
+          };
+        return mockServer(request);
+      },
+    },
+  });
   await app.waitFor("id:file-entry-App.tsx");
   await app.press("id:file-entry-App.tsx");
   await app.keyboard.press("enter");
@@ -241,7 +292,9 @@ test("filters a large loaded native tree after focusing a document panel", async
   expect(app.count("id:file-entry-src/item-0.ts")).toBe(0);
   await app.clear("id:sidebar-search");
   await app.waitFor("id:file-entry-src/item-0.ts");
-  expect(app.requests().filter(request => request.url.includes("NativeDirectory")).length).toBe(1);
+  expect(app.requests().filter((request) => request.url.includes("NativeDirectory")).length).toBe(
+    1,
+  );
 });
 
 test("rejects invalid addresses and deduplicates normalized servers", async () => {
@@ -297,8 +350,9 @@ test("assigns distinct stable server icons", async () => {
   await addServer(app, "https://two.example");
   await addServer(app, "https://three.example");
   const variants = [0, 1, 2, 3, 4, 5];
-  const assigned = [1, 2, 3].map(id =>
-    variants.find(variant => app.count(`id:server-icon-${id}-${variant}`) === 1));
+  const assigned = [1, 2, 3].map((id) =>
+    variants.find((variant) => app.count(`id:server-icon-${id}-${variant}`) === 1),
+  );
   expect(new Set(assigned).size).toBe(3);
   await app.hover("id:top-tab-2");
   await app.press("id:top-tab-1");
@@ -310,8 +364,10 @@ test("assigns distinct stable server icons", async () => {
 test("shows connection failure and supports retry without fake projects", async () => {
   let fail = true;
   const app = await open("./App.tsx", {
-    platform: "macos", width: 1280, height: 840,
-    network: { "*": request => fail ? { status: 503 } : mockServer(request) },
+    platform: "macos",
+    width: 1280,
+    height: 840,
+    network: { "*": (request) => (fail ? { status: 503 } : mockServer(request)) },
   });
   await app.waitFor("id:retry-connection");
   expect(app.count("id:project-tab-p1")).toBe(0);
@@ -324,7 +380,9 @@ test("shows connection failure and supports retry without fake projects", async 
 
 test("handles an empty project list without requesting a made-up project", async () => {
   const app = await open("./App.tsx", {
-    platform: "macos", width: 1280, height: 840,
+    platform: "macos",
+    width: 1280,
+    height: 840,
     network: { "*": { body: { data: { listProjects: [] } } } },
   });
   await app.waitFor("text:服务器尚未创建项目");
@@ -334,9 +392,15 @@ test("handles an empty project list without requesting a made-up project", async
 
 test("shows workspace query failure without retaining another project's files", async () => {
   const app = await open("./App.tsx", {
-    platform: "macos", width: 1280, height: 840,
-    network: { "*": request => request.url.includes("NativeWorkspace")
-      ? { body: { errors: [{ message: "access denied" }] } } : mockServer(request) },
+    platform: "macos",
+    width: 1280,
+    height: 840,
+    network: {
+      "*": (request) =>
+        request.url.includes("NativeWorkspace")
+          ? { body: { errors: [{ message: "access denied" }] } }
+          : mockServer(request),
+    },
   });
   await app.waitFor("text:工作区读取失败，请检查服务状态后重试。");
   expect(app.count("id:file-entry-App.tsx")).toBe(0);
@@ -346,10 +410,17 @@ test("shows workspace query failure without retaining another project's files", 
 test("keeps empty folders in the Tree and retries failed child reads", async () => {
   let fail = true;
   const app = await open("./App.tsx", {
-    platform: "macos", width: 1280, height: 840,
-    network: { "*": request => request.url.includes("NativeDirectory")
-      ? fail ? { status: 503 } : { body: { data: { listFiles: [] } } }
-      : mockServer(request) },
+    platform: "macos",
+    width: 1280,
+    height: 840,
+    network: {
+      "*": (request) =>
+        request.url.includes("NativeDirectory")
+          ? fail
+            ? { status: 503 }
+            : { body: { data: { listFiles: [] } } }
+          : mockServer(request),
+    },
   });
   await app.waitFor("id:file-entry-src");
   await app.press("id:file-entry-src");
@@ -370,7 +441,7 @@ test("clears cached branches when switching projects", async () => {
   expect(app.count("id:file-entry-src/index.ts")).toBe(0);
   await app.press("id:file-entry-src");
   await app.waitFor("id:file-entry-src/index.ts");
-  const requests = app.requests().filter(request => request.url.includes("NativeDirectory"));
+  const requests = app.requests().filter((request) => request.url.includes("NativeDirectory"));
   expect(requests.length).toBe(2);
   expect(new URL(requests[1].url).searchParams.get("variables")).toContain('"projectId":"p2"');
 });
