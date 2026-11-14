@@ -7,6 +7,7 @@ async function setup() {
     platform: "macos",
     width: 1280,
     height: 840,
+    clock: {},
     network: { "*": server.serve, "POST *": server.serve },
   });
   await app.waitFor("id:file-entry-App.tsx");

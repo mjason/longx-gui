@@ -15,6 +15,7 @@ async function setupDiff() {
     platform: "macos",
     width: 1280,
     height: 840,
+    clock: {},
     network: { "*": serve },
   });
   await app.waitFor("id:file-entry-App.tsx");

@@ -72,7 +72,7 @@ export function ContentPanel(props: {
           url={state.currentServer()!.url}
           projectId={state.selectedProject()!.id}
           path={diff()!}
-          revision={props.revision + props.git.revision()}
+          revision={props.revision + props.git.revision() + props.git.fileRevision(diff()!)}
           settings={props.settings}
           layout={props.git.diffLayout()}
           onLayoutChange={props.git.setDiffLayout}

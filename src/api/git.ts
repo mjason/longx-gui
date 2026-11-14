@@ -21,6 +21,20 @@ export interface GitLog {
   author: string;
   at: string;
 }
+export async function gitIgnoredPaths(url: string, projectId: string, signal: AbortSignal) {
+  const data = await query<{ ignoredPaths: string[] }>(
+    url,
+    "query NativeGitIgnored($projectId: ID!) { ignoredPaths(projectId: $projectId) }",
+    { projectId },
+    signal,
+  );
+  if (
+    !Array.isArray(data.ignoredPaths) ||
+    data.ignoredPaths.some((path) => typeof path !== "string")
+  )
+    throw new Error("Git 忽略路径格式不兼容。");
+  return data.ignoredPaths;
+}
 export async function gitStatus(url: string, projectId: string, signal: AbortSignal) {
   const data = await query<{ gitChanges: GitStatus }>(
     url,

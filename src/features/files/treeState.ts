@@ -19,6 +19,8 @@ export function createFileTreeState(options: FileTreeOptions) {
   const directories = signal<Record<string, Directory>>({});
   const expanded = signal<string[]>([]);
   const selected = signal<string | null>(null);
+  const root = signal<FileEntry[] | null>(null);
+  const roots = () => root() ?? options.entries();
   const requests = new Map<string, AbortController>();
   let generation = 0;
   function cancel() {
@@ -33,6 +35,7 @@ export function createFileTreeState(options: FileTreeOptions) {
     untracked(() => {
       cancel();
       directories.set({});
+      root.set(null);
       expanded.set([]);
       selected.set(null);
     });
@@ -43,7 +46,7 @@ export function createFileTreeState(options: FileTreeOptions) {
     if (!id.startsWith("entry:")) return undefined;
     const path = id.slice(6);
     return (
-      options.entries().find((file) => file.path === path) ??
+      roots().find((file) => file.path === path) ??
       Object.values(directories())
         .flatMap((directory) => directory.entries)
         .find((file) => file.path === path)
@@ -67,11 +70,11 @@ export function createFileTreeState(options: FileTreeOptions) {
     }));
     try {
       const entries = await listFiles(serverUrl, projectId, file.path, controller.signal);
-      if (version === generation) {
+      if (version === generation && requests.get(file.path) === controller) {
         directories.update((values) => ({ ...values, [file.path]: { status: "ready", entries } }));
       }
     } catch {
-      if (version === generation) {
+      if (version === generation && requests.get(file.path) === controller) {
         directories.update((values) => ({
           ...values,
           [file.path]: { status: "error", entries: [] },
@@ -117,7 +120,7 @@ export function createFileTreeState(options: FileTreeOptions) {
         ];
       });
     }
-    return build(options.entries());
+    return build(roots());
   });
 
   return {
@@ -126,6 +129,44 @@ export function createFileTreeState(options: FileTreeOptions) {
     selected,
     entry,
     expand,
+    async refreshPaths(paths?: string[]) {
+      const serverUrl = options.serverUrl(),
+        projectId = options.projectId();
+      if (!serverUrl || !projectId) return;
+      const version = generation;
+      // Refresh loaded listings only. Expansion, selection, drafts and unopened folders survive.
+      const targets = ["", ...Object.keys(directories())].filter(
+        (directory) =>
+          !paths?.length ||
+          directory === "" ||
+          paths.some(
+            (path) =>
+              path === directory ||
+              path.startsWith(`${directory}/`) ||
+              directory.startsWith(`${path.replace(/\/$/, "")}/`),
+          ),
+      );
+      await Promise.all(
+        targets.map(async (path) => {
+          requests.get(path)?.abort();
+          const controller = new AbortController();
+          requests.set(path, controller);
+          const timeout = setTimeout(() => controller.abort(), 10000);
+          try {
+            const entries = await listFiles(serverUrl, projectId, path, controller.signal);
+            if (version !== generation || requests.get(path) !== controller) return;
+            if (path === "") root.set(entries);
+            else
+              directories.update((values) => ({ ...values, [path]: { status: "ready", entries } }));
+          } catch {
+            /* Keep the last successful listing; later events/reconnect retry it. */
+          } finally {
+            clearTimeout(timeout);
+            if (requests.get(path) === controller) requests.delete(path);
+          }
+        }),
+      );
+    },
     filter: options.search,
     visibleExpanded: () => {
       if (!options.search().trim()) return expanded();

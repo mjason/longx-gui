@@ -76,6 +76,7 @@ export function mockServer(request: StubRequest): StubResponse {
         },
       },
     };
+  if (query.includes("NativeGitIgnored")) return { body: { data: { ignoredPaths: [] } } };
   if (query.includes("NativeGitStatus"))
     return {
       body: {

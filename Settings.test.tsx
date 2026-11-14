@@ -32,6 +32,7 @@ test("opens Settings by the native menu shortcut and persists changes without lo
     platform: "macos",
     width: 1280,
     height: 840,
+    clock: {},
     network: { "*": server.serve, "POST *": server.serve },
   });
   await app.waitFor("id:file-entry-App.tsx");

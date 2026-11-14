@@ -4,6 +4,7 @@ import { Icon } from "../../components/Icon";
 import type { WorkspaceState } from "../../state/workspace";
 import { FileTree } from "../files/FileTree";
 import type { FileTreeState } from "../files/treeState";
+import type { GitDecoration } from "../git/treeDecorations";
 import type { ContentTabsState } from "./contentTabs";
 
 export function DockFiles(props: {
@@ -13,6 +14,7 @@ export function DockFiles(props: {
   search: Signal<string>;
   filtering: Signal<boolean>;
   rootExpanded: Signal<boolean>;
+  decoration: (path: string) => GitDecoration | undefined;
 }) {
   const state = props.workspace;
   return (
@@ -34,7 +36,7 @@ export function DockFiles(props: {
         <Text class="p-3 text-xs text-destructive">{state.workspaceData().error}</Text>
       </If>
       <If when={props.rootExpanded() && state.workspaceData().status === "ready"}>
-        <FileTree state={props.tree} onOpen={props.tabs.openFile} />
+        <FileTree state={props.tree} onOpen={props.tabs.openFile} decoration={props.decoration} />
         <If when={props.tree.items().length === 0}>
           <Text class="p-3 text-[13px] text-muted-foreground">
             {props.search() ? "没有匹配的文件" : "目录为空"}

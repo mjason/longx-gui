@@ -2,10 +2,19 @@ import { Text, token, View } from "nsh";
 import { Tree } from "nsh/base";
 import type { FileEntry } from "../../api/client";
 import { Icon } from "../../components/Icon";
+import { type GitDecoration, gitColor } from "../git/treeDecorations";
 import type { FileTreeState } from "./treeState";
 
-export function FileTree(props: { state: FileTreeState; onOpen: (file: FileEntry) => void }) {
+export function FileTree(props: {
+  state: FileTreeState;
+  onOpen: (file: FileEntry) => void;
+  decoration: (path: string) => GitDecoration | undefined;
+}) {
   const state = props.state;
+  const color = (id: string, fallback: "quiet" | "foreground") => {
+    const decoration = props.decoration(id.slice(6));
+    return token(decoration ? gitColor[decoration] : fallback);
+  };
   // Rebuild only the native viewport when filtering. Large virtualized folder
   // lists can otherwise retain stale visible-row caches after children shrink.
   // The controlled selection/expansion and loaded directories stay in state.
@@ -47,7 +56,11 @@ export function FileTree(props: { state: FileTreeState; onOpen: (file: FileEntry
                 </If>
               </View>
               <If when={!item.disabled}>
-                <Icon name={item.folder ? "folder" : "file"} size={15} color={token("quiet")} />
+                <Icon
+                  name={item.folder ? "folder" : "file"}
+                  size={15}
+                  color={color(item.id, "quiet")}
+                />
               </If>
               <Text
                 testID={`file-label-${item.id.slice(6)}`}
@@ -56,7 +69,11 @@ export function FileTree(props: { state: FileTreeState; onOpen: (file: FileEntry
                     ? "flex-1 font-sans font-normal text-[12px] text-quiet"
                     : "flex-1 font-sans font-normal text-[13px] text-foreground"
                 }
-                style={{ numberOfLines: 1, lineHeight: 20 }}
+                style={{
+                  numberOfLines: 1,
+                  lineHeight: 20,
+                  color: item.disabled ? token("quiet") : color(item.id, "foreground"),
+                }}
               >
                 {item.label}
               </Text>

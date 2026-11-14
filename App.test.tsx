@@ -6,6 +6,7 @@ async function openApp() {
     platform: "macos",
     width: 1280,
     height: 840,
+    clock: {},
     network: { "*": mockServer },
   });
   await app.waitFor("id:file-entry-App.tsx");

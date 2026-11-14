@@ -1,4 +1,4 @@
-import { effect, keymap, platform, signal, Text, token, View } from "nsh";
+import { computed, effect, keymap, platform, signal, Text, token, View } from "nsh";
 import { AlertDialog } from "nsh/base";
 import { currentWindow } from "nsh/desktop";
 import { AppButton as Button } from "../../components/AppButton";
@@ -10,6 +10,7 @@ import { createEditorState, documentKey } from "../files/editorState";
 import { createFileTreeState } from "../files/treeState";
 import { GitPanel } from "../git/GitPanel";
 import { createGitState } from "../git/gitState";
+import { treeDecorations } from "../git/treeDecorations";
 import type { EditorSettings } from "../settings/editorSettings";
 import { ContentPanel } from "./ContentPanel";
 import { createContentTabs } from "./contentTabs";
@@ -45,9 +46,13 @@ export function WorkspaceLayout(props: {
   const git = createGitState({
     url: () => state.currentServer()?.url,
     projectId: () => state.selectedProject()?.id,
-    enabled: () => dock.auxiliary() === "branch",
+    enabled: () => !!state.selectedProject(),
     dirty: (path) => editor.dirty(keyFor(path)),
+    onFiles: (paths) => {
+      void tree.refreshPaths(paths);
+    },
   });
+  const decorations = computed(() => treeDecorations(git.status()?.changes ?? [], git.ignored()));
   let askingClose = false;
   async function closeTab(id: string) {
     const tab = tabs.items().find((item) => item.id === id);
@@ -100,6 +105,11 @@ export function WorkspaceLayout(props: {
     tabs.reset();
   });
   if (["macos", "windows", "linux"].includes(platform.os)) {
+    effect(() =>
+      currentWindow().on("focusChange", ({ focused }) => {
+        if (focused) void git.refresh(false);
+      }),
+    );
     effect(() => currentWindow().set({ closeOnPress: editor.dirtyCount() === 0 && !git.busy() }));
     currentWindow().on("closePress", async () => {
       if ((!editor.dirtyCount() && !git.busy()) || askingClose) return;
@@ -168,6 +178,7 @@ export function WorkspaceLayout(props: {
                 search={search}
                 filtering={filtering}
                 rootExpanded={rootExpanded}
+                decoration={(path) => decorations()(path)}
               />
             );
           if (id === "conversations") return <DockConversations workspace={state} tabs={tabs} />;
