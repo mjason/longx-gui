@@ -1,7 +1,7 @@
 import { expect, open, test } from "nsh/test";
 import { mockServer } from "./tests/fixtures/server";
 
-async function setup() {
+async function setup(keepAutoOpen = false) {
   const app = await open("./tests/fixtures/ThreadHarness.tsx", {
     platform: "macos",
     width: 1000,
@@ -10,8 +10,37 @@ async function setup() {
     network: { "*": mockServer },
   });
   await app.waitFor("id:thread-item-assistant-1");
+  if (!keepAutoOpen) await app.press("id:thread-collapse-all");
   return app;
 }
+test("current work opens automatically, respects manual collapse and leaves history closed", async () => {
+  const app = await setup(true);
+  await app.waitFor("id:thread-toggle-tool-1");
+  await app.waitFor("id:thread-document-thought-1");
+  expect(app.texts()).toContain("正在运行");
+  await app.press("id:thread-group-toggle-activity:tool-1");
+  await app.press("id:activity");
+  await app.waitFor("text:2 次工具活动 · 2 段思考");
+  expect(app.count("id:thread-toggle-tool-1")).toBe(0);
+  await app.press("id:finish");
+  await app.waitFor("id:thread-copy-turn:turn-1");
+  expect(app.count("id:composer-activity")).toBe(0);
+  expect(app.count("id:thread-toggle-tool-1")).toBe(0);
+});
+test("finishing a turn closes its process and details once, but permits reopening history", async () => {
+  const app = await setup(true);
+  await app.waitFor("id:thread-document-thought-1");
+  await app.press("id:finish");
+  await app.waitFor("id:thread-copy-turn:turn-1");
+  expect(app.count("id:thread-toggle-tool-1")).toBe(0);
+  expect(app.count("id:thread-document-thought-1")).toBe(0);
+  await app.press("id:thread-group-toggle-activity:tool-1");
+  expect(app.count("id:thread-toggle-tool-1")).toBe(1);
+  await app.press("id:thread-toggle-thought-1");
+  expect(app.count("id:thread-document-thought-1")).toBe(1);
+  await app.press("id:theme");
+  expect(app.count("id:thread-document-thought-1")).toBe(1);
+});
 test("shows user and assistant images without a redundant user label", async () => {
   const app = await setup();
   expect(app.texts().includes("你")).toBe(false);
@@ -65,6 +94,7 @@ test("expanded documents render Markdown and can collapse from the footer or fix
   expect(app.texts()).toContain("检查说明");
   expect(app.texts()).toContain("const checked = true;");
   expect(app.texts().some((value) => value.includes("## 检查说明"))).toBe(false);
+  await app.scroll("id:thread-timeline", 240);
   await app.press("id:thread-collapse-thought-1");
   expect(app.count("id:thread-document-thought-1")).toBe(0);
   await app.press("id:thread-group-collapse-activity:tool-1");

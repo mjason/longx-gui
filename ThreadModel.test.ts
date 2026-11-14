@@ -15,6 +15,40 @@ test("maps kernel identity, rejects mismatched snapshots and deduplicates snapsh
   }
   expect(failed).toBe(true);
 });
+test("composer metadata follows the actual waiting, token usage, model and goal push shapes", () => {
+  let view = snapshot(
+    { ...threadSnapshot(), waiting: { paused: true, waiting: [{ id: "w1", text: "待处理" }] } },
+    "kernel-t1",
+  );
+  expect(view.waiting.paused).toBe(true);
+  view = reduceEvent(view, {
+    seq: 11,
+    method: "thread/waiting/updated",
+    params: { paused: false, waiting: [{ id: "w2", text: "新消息" }] },
+  });
+  expect((view.waiting.waiting as { id: string }[])[0].id).toBe("w2");
+  view = reduceEvent(view, {
+    seq: 12,
+    method: "thread/tokenUsage/updated",
+    params: { tokenUsage: { modelContextWindow: 100000, last: { totalTokens: 25000 } } },
+  });
+  expect(view.tokenUsage.modelContextWindow).toBe(100000);
+  view = reduceEvent(view, {
+    seq: 13,
+    method: "turn/model",
+    params: { turnId: "turn-1", model: "sol", name: "Sol", effort: "high" },
+  });
+  expect(view.turn?.model).toBe("sol");
+  expect(view.turn?.effort).toBe("high");
+  view = reduceEvent(view, {
+    seq: 14,
+    method: "thread/goal/updated",
+    params: { goal: { objective: "目标", tokenBudget: 3000 } },
+  });
+  expect(view.goal?.objective).toBe("目标");
+  view = reduceEvent(view, { seq: 15, method: "thread/goal/cleared", params: {} });
+  expect(view.goal).toBe(null);
+});
 test("applies stream deltas exactly once by sequence and completes the same stable item", () => {
   const view = snapshot(threadSnapshot(), "kernel-t1");
   const event = {

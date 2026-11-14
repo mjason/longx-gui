@@ -11,6 +11,11 @@ export interface ThreadView {
   turn: RecordValue | null;
   status: unknown;
   requests: RecordValue[];
+  waiting: RecordValue;
+  tokenUsage: RecordValue;
+  progress: RecordValue;
+  goal: RecordValue | null;
+  thread: RecordValue;
   earlier: { items: number; turns: number; partial: number };
 }
 export function record(value: unknown): RecordValue {
@@ -50,6 +55,11 @@ export function snapshot(value: unknown, threadId: string): ThreadView {
     items: items(source.items),
     turn: source.turn ? record(source.turn) : null,
     status: source.status,
+    waiting: record(source.waiting),
+    tokenUsage: record(source.token_usage),
+    progress: record(source.progress),
+    goal: source.goal ? record(source.goal) : null,
+    thread: record(source.thread),
     requests: Array.isArray(source.pending_requests) ? source.pending_requests.map(record) : [],
     earlier: earlier(source.earlier),
   };
@@ -83,8 +93,21 @@ export function reduceEvent(view: ThreadView, value: unknown): ThreadView {
     method = event.method;
   const next = { ...view, seq: event.seq };
   if (method === "turn/started" || method === "turn/completed")
-    return { ...next, turn: record(params.turn) };
+    return { ...next, turn: record(params.turn), progress: {} };
+  if (method === "thread/started") return { ...next, thread: record(params.thread) };
   if (method === "thread/status/changed") return { ...next, status: params.status };
+  if (method === "thread/waiting/updated") return { ...next, waiting: params };
+  if (method === "thread/tokenUsage/updated")
+    return { ...next, tokenUsage: record(params.tokenUsage) };
+  if (method === "turn/progress") return { ...next, progress: record(params.progress) };
+  if (method === "thread/goal/updated")
+    return { ...next, goal: params.goal ? record(params.goal) : null };
+  if (method === "thread/goal/cleared") return { ...next, goal: null };
+  if (method === "turn/model" && params.turnId === view.turn?.id)
+    return {
+      ...next,
+      turn: { ...view.turn, model: params.model, modelName: params.name, effort: params.effort },
+    };
   if (method === "thread/reverted") {
     const removed = new Set(Array.isArray(params.turnIds) ? params.turnIds : []);
     return {

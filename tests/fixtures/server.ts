@@ -1,7 +1,10 @@
 import type { StubRequest, StubResponse } from "nsh/test";
+import { composerRead } from "./composer";
 
 /** Deterministic server contract for UI tests; never imported by the app. */
 export function mockServer(request: StubRequest): StubResponse {
+  const composer = composerRead(request);
+  if (composer) return composer;
   const url = new URL(request.url);
   const query = url.searchParams.get("query") ?? "";
   const variables = JSON.parse(url.searchParams.get("variables") ?? "{}") as {

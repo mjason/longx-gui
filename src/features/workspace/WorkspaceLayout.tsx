@@ -204,6 +204,18 @@ export function WorkspaceLayout(props: {
               git={git}
               revision={revision()}
               settings={props.settings}
+              onCommand={(command) => {
+                if (command === "new") tabs.openNewThread();
+                else if (command === "settings") props.onSettings();
+                else {
+                  dock.open.set(true);
+                  if (command === "git") dock.auxiliary.set("branch");
+                  else {
+                    dock.auxiliary.set(null);
+                    dock.files.set(true);
+                  }
+                }
+              }}
             />
           );
         }}

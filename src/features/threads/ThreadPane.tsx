@@ -1,4 +1,16 @@
-import { Clipboard, computed, List, type ListRef, openUrl, signal, Text, token, View } from "nsh";
+import {
+  Clipboard,
+  computed,
+  effect,
+  List,
+  type ListRef,
+  openUrl,
+  signal,
+  Text,
+  token,
+  untracked,
+  View,
+} from "nsh";
 import {
   Accordion,
   AccordionHeader,
@@ -13,6 +25,8 @@ import { checkPath } from "../../api/files";
 import { AppButton as Button } from "../../components/AppButton";
 import { Icon } from "../../components/Icon";
 import { AssistantIdentity } from "./AssistantIdentity";
+import { ComposerWaiting } from "./ComposerWaiting";
+import { ThreadComposer } from "./ThreadComposer";
 import { ThreadImage } from "./ThreadImage";
 import {
   type ActivityRow,
@@ -23,7 +37,13 @@ import {
   type ThreadRowData,
 } from "./threadGroups";
 import { contentText, record, type ThreadItem, text } from "./threadModel";
-import { assistantFiles, assistantText, presentThreadRows } from "./threadPresentation";
+import {
+  assistantFiles,
+  assistantText,
+  canDiscardTurn,
+  canRetractTurn,
+  presentThreadRows,
+} from "./threadPresentation";
 import { createThreadState, type ThreadState } from "./threadState";
 
 const labels: Record<string, string> = {
@@ -267,13 +287,20 @@ function ThreadRow(props: {
               onPress={() => props.state.toggle(props.item.id)}
               class="h-7 flex-row items-center gap-2 rounded hover:bg-accent focus-visible:ring-2 focus-visible:ring-primary"
             >
-              <Text class="text-xs text-quiet">
-                {props.state.expanded().includes(props.item.id) ? "⌄" : "›"}
-              </Text>
-              <Text class="flex-1 text-xs text-muted-foreground" style={{ numberOfLines: 1 }}>
+              <Icon
+                name={props.state.expanded().includes(props.item.id) ? "chevronDown" : "chevron"}
+                size={12}
+              />
+              <Text
+                class="flex-1 h-5 text-xs text-muted-foreground"
+                style={{ numberOfLines: 1, lineHeight: 16, textAlignVertical: "center" }}
+              >
                 {title(props.item)}
               </Text>
-              <Text class={failed() ? "text-xs text-destructive" : "text-xs text-quiet"}>
+              <Text
+                class={failed() ? "h-5 text-xs text-destructive" : "h-5 text-xs text-quiet"}
+                style={{ lineHeight: 16, textAlignVertical: "center" }}
+              >
                 {failed()
                   ? "失败"
                   : props.item.status === "inProgress"
@@ -315,23 +342,35 @@ function ThreadActivityGroup(props: {
               class="group h-8 flex-row items-center gap-2 rounded hover:bg-accent"
               accessibilityLabel={`执行过程：${activitySummary(props.row)}`}
             >
-              <Text class="text-xs text-quiet">{open() ? "⌄" : "›"}</Text>
-              <Text class="text-xs text-muted-foreground">
+              <Icon name={open() ? "chevronDown" : "chevron"} size={12} />
+              <Text
+                class="h-5 text-xs text-muted-foreground"
+                style={{ lineHeight: 16, textAlignVertical: "center" }}
+              >
                 {props.running ? "正在处理" : "执行过程"}
               </Text>
-              <Text class="flex-1 text-xs text-quiet" style={{ numberOfLines: 1 }}>
+              <Text
+                class="flex-1 h-5 text-xs text-quiet"
+                style={{ numberOfLines: 1, lineHeight: 16, textAlignVertical: "center" }}
+              >
                 {activitySummary(props.row)}
               </Text>
               <If when={!!failures()}>
                 <Text
                   testID={`thread-group-failures-${props.row.id}`}
-                  class="text-xs text-destructive"
+                  class="h-5 text-xs text-destructive"
+                  style={{ lineHeight: 16, textAlignVertical: "center" }}
                 >
                   {failures()} 项失败
                 </Text>
               </If>
               <If when={props.running}>
-                <Text class="text-xs text-primary">进行中</Text>
+                <Text
+                  class="h-5 text-xs text-primary"
+                  style={{ lineHeight: 16, textAlignVertical: "center" }}
+                >
+                  进行中
+                </Text>
               </If>
             </AccordionTrigger>
           </AccordionHeader>
@@ -369,6 +408,7 @@ export function ThreadPane(props: {
   threadId: string;
   onFile: (path: string) => void;
   subscribe?: Parameters<typeof createThreadState>[0]["subscribe"];
+  onCommand?: (command: "new" | "git" | "files" | "settings") => void;
 }) {
   const followLatest = signal(true);
   const threadState = createThreadState({
@@ -411,6 +451,59 @@ export function ThreadPane(props: {
     return previousRows;
   });
   const presented = computed(() => presentThreadRows(rows()));
+  const currentActivity = computed(() => {
+    const turn = state.view()?.turn;
+    if (turn?.status !== "inProgress") return null;
+    return rows()
+      .filter((row): row is ActivityRow => row.kind === "activity" && row.turnId === turn.id)
+      .at(-1);
+  });
+  let activeProcess: { scope: string; turnId: string; ids: string[] } | null = null;
+  effect(() => {
+    const view = state.view();
+    const scope = JSON.stringify([props.url, props.projectId, props.threadId]);
+    if (!view || activeProcess?.scope !== scope) activeProcess = null;
+    if (!view) return;
+    if (
+      activeProcess &&
+      (view.turn?.id !== activeProcess.turnId || view.turn?.status !== "inProgress")
+    ) {
+      const ids = activeProcess.ids;
+      activeProcess = null;
+      untracked(() => threadState.autoCollapse(ids));
+    }
+    if (view.turn?.status !== "inProgress") return;
+    const groups = rows().filter(
+      (row): row is ActivityRow => row.kind === "activity" && row.turnId === view.turn?.id,
+    );
+    activeProcess = {
+      scope,
+      turnId: String(view.turn.id),
+      ids: groups.flatMap((row) => [row.id, ...row.items.map((item) => item.id)]),
+    };
+    const completed = groups.flatMap((row) =>
+      row.items
+        .filter((item) =>
+          ["completed", "failed", "interrupted", "declined"].includes(String(item.status)),
+        )
+        .map((item) => item.id),
+    );
+    untracked(() => threadState.autoCollapse(completed));
+  });
+  effect(() => {
+    const row = currentActivity();
+    if (!row) return;
+    const latest = row.items.at(-1);
+    const ids = [row.id];
+    if (
+      latest &&
+      (latest.status === "inProgress" || (latest.type === "reasoning" && !latest.status))
+    )
+      ids.push(latest.id);
+    // Automatic expansion follows new work; manual collapse survives subsequent deltas.
+    // Bypass the reading-action wrapper so it does not disable bottom-follow.
+    untracked(() => threadState.autoExpand(ids));
+  });
   const scope = () => JSON.stringify([props.url, props.projectId, props.threadId]);
   const copyKey = (key: string) => `${scope()}:${key}`;
   async function copyAssistant(key: string) {
@@ -563,11 +656,7 @@ export function ThreadPane(props: {
                     baseUrl={props.url}
                     row={row() as ActivityRow}
                     state={state}
-                    running={
-                      row().id === rows().at(-1)?.id &&
-                      state.view()?.turn?.status === "inProgress" &&
-                      (row() as ActivityRow).turnId === state.view()?.turn?.id
-                    }
+                    running={row().id === currentActivity()?.id}
                     onFile={onFile}
                     onLink={onLink}
                   />
@@ -652,12 +741,38 @@ export function ThreadPane(props: {
       </If>
       <If when={!!state.view()?.requests.length}>
         <Text testID="thread-pending" class="px-4 py-2 text-xs text-ochre">
-          有 {state.view()?.requests.length} 个待回应请求；当前为只读视图，请在网页端处理。
+          有 {state.view()?.requests.length} 个待回应请求；请在网页端处理。
         </Text>
       </If>
-      <Text class="px-4 py-2 border-t border-border text-xs text-quiet">
-        只读会话 · 发送与交互操作尚未接入
-      </Text>
+      <ComposerWaiting
+        url={props.url}
+        threadId={props.threadId}
+        waiting={state.view()?.waiting ?? {}}
+        ready={state.connected() && !!state.view() && !state.loading() && !state.error()}
+      />
+      <ThreadComposer
+        url={props.url}
+        projectId={props.projectId}
+        threadId={props.threadId}
+        ready={state.connected() && !!state.view() && !state.loading() && !state.error()}
+        running={state.view()?.turn?.status === "inProgress"}
+        turnId={
+          typeof state.view()?.turn?.id === "string" ? (state.view()!.turn!.id as string) : ""
+        }
+        turnStatus={text(state.view()?.turn?.status)}
+        turn={state.view()?.turn ?? undefined}
+        pendingResponse={!!state.view()?.requests.length}
+        threadStatus={text(state.view()?.thread.status)}
+        canRetract={canRetractTurn(state.view())}
+        canDiscard={canDiscardTurn(state.view())}
+        tokenUsage={state.view()?.tokenUsage}
+        goal={state.view()?.goal}
+        onCommand={props.onCommand}
+        onSend={() => {
+          followLatest.set(true);
+          list?.scrollToEnd({ animated: false });
+        }}
+      />
     </View>
   );
 }

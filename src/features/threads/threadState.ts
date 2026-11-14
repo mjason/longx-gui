@@ -16,6 +16,8 @@ export function createThreadState(options: {
     paging = signal(false),
     pageError = signal("");
   const expanded = signal<string[]>([]);
+  const autoExpanded = new Set<string>();
+  const autoCollapsed = new Set<string>();
   const retry = signal(0);
   let channel: ReturnType<typeof subscribeChannel> | undefined;
   let generation = 0;
@@ -36,6 +38,8 @@ export function createThreadState(options: {
       paging.set(false);
       pageError.set("");
       expanded.set([]);
+      autoExpanded.clear();
+      autoCollapsed.clear();
     });
     let subscription: ReturnType<typeof subscribeChannel> | undefined;
     let batch: unknown[] = [],
@@ -147,6 +151,18 @@ export function createThreadState(options: {
     paging,
     pageError,
     expanded,
+    autoExpand(ids: string[]) {
+      const fresh = ids.filter((id) => !autoExpanded.has(id));
+      if (!fresh.length) return;
+      for (const id of fresh) autoExpanded.add(id);
+      expanded.update((values) => [...new Set([...values, ...fresh])]);
+    },
+    autoCollapse(ids: string[]) {
+      const fresh = ids.filter((id) => !autoCollapsed.has(id));
+      if (!fresh.length) return;
+      for (const id of fresh) autoCollapsed.add(id);
+      expanded.update((values) => values.filter((id) => !fresh.includes(id)));
+    },
     retry: () => retry.set(retry() + 1),
     toggle(id: string) {
       expanded.set(

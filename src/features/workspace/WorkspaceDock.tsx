@@ -180,6 +180,16 @@ export function WorkspaceDock(props: {
                 {props.projectName}
               </Text>
             </If>
+            <If when={tab.panel === "conversations"}>
+              <Button
+                testID="new-thread"
+                accessibilityLabel="新建会话"
+                onPress={props.tabs.openNewThread}
+                class="h-6 w-6 rounded hover:bg-accent"
+              >
+                <Text class="text-base text-muted-foreground">＋</Text>
+              </Button>
+            </If>
             <If when={tab.panel !== "files"}>
               <Text
                 class={

@@ -7,8 +7,8 @@ import { documentKey, type EditorState } from "../files/editorState";
 import { GitDiffPane } from "../git/GitDiffPane";
 import type { GitState } from "../git/gitState";
 import type { EditorSettings } from "../settings/editorSettings";
+import { ThreadComposer } from "../threads/ThreadComposer";
 import { ThreadPane } from "../threads/ThreadPane";
-import { ComposerPlaceholder } from "./ComposerPlaceholder";
 import type { ContentTabsState } from "./contentTabs";
 
 export function ContentPanel(props: {
@@ -19,6 +19,7 @@ export function ContentPanel(props: {
   git: GitState;
   revision: number;
   settings: EditorSettings;
+  onCommand?: (command: "new" | "git" | "files" | "settings") => void;
 }) {
   const state = props.workspace;
   const tab = () => props.tabs.items().find((item) => item.id === props.id);
@@ -95,6 +96,7 @@ export function ContentPanel(props: {
           projectId={state.selectedProject()!.id}
           threadId={thread()!.id}
           onFile={(path) => props.tabs.openFile({ path, name: path.split("/").pop() ?? path })}
+          onCommand={props.onCommand}
         />
       </If>
       <If when={!file() && !diff() && !thread()}>
@@ -126,12 +128,27 @@ export function ContentPanel(props: {
               <Text class="text-[13px] text-muted-foreground">
                 {state.selectedProject()?.rootPath ?? "服务器尚未创建项目"}
               </Text>
-              <Text class="text-[13px] text-muted-foreground">从左侧选择文件或会话</Text>
+              <Text class="text-[13px] text-muted-foreground">
+                从左侧选择文件或会话，也可以直接发送开始新会话
+              </Text>
             </If>
           </View>
         </Scroll>
         <If when={!!state.selectedProject()}>
-          <ComposerPlaceholder />
+          <ThreadComposer
+            url={state.currentServer()?.url ?? ""}
+            projectId={state.selectedProject()!.id}
+            threadId=""
+            ready={!!state.currentServer() && state.connection()?.status === "ready"}
+            running={false}
+            turnId=""
+            onCommand={props.onCommand}
+            onCreated={(created) => {
+              props.tabs.close("chat:new");
+              props.tabs.openThread(created);
+              state.refresh();
+            }}
+          />
         </If>
       </If>
     </View>

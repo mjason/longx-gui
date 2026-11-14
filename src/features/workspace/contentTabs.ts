@@ -5,6 +5,7 @@ import type { FileEntry, ThreadSummary } from "../../api/client";
 type EditorFile = Pick<FileEntry, "name" | "path"> & Partial<FileEntry>;
 
 export type ContentTab =
+  | { id: "chat:new"; kind: "new"; title: string }
   | { id: string; kind: "file"; title: string; file: EditorFile }
   | { id: string; kind: "diff"; title: string; path: string }
   | { id: string; kind: "chat"; title: string; thread: ThreadSummary };
@@ -33,6 +34,7 @@ export function createContentTabs() {
       open({ id: `diff:${path}`, kind: "diff", title: `${path.split("/").pop()} · 差异`, path }),
     openThread: (thread: ThreadSummary) =>
       open({ id: `chat:${thread.id}`, kind: "chat", title: thread.title || "未命名会话", thread }),
+    openNewThread: () => open({ id: "chat:new", kind: "new", title: "新会话" }),
     close(id: string) {
       const index = items().findIndex((item) => item.id === id);
       if (index < 0) return;

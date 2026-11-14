@@ -86,7 +86,12 @@ test("retains separate file and conversation tabs with selection and close behav
   // Reopening a closed chat now reads its metadata; document/cache operations
   // must still avoid unrelated reads.
   const documentRequests = () =>
-    app.requests().filter((request) => !request.url.includes("NativeThread")).length;
+    app
+      .requests()
+      .filter(
+        (request) =>
+          !request.url.includes("NativeThread") && !request.url.includes("NativeComposerCatalog"),
+      ).length;
   const requests = documentRequests();
   await app.press("id:content-tab-file:App.tsx");
   await app.waitFor("id:file-editor");
@@ -103,7 +108,7 @@ test("retains separate file and conversation tabs with selection and close behav
   await app.waitFor("id:file-editor");
   expect(app.count("id:file-editor")).toBe(1);
   await app.press("id:close-content-file:App.tsx");
-  expect(app.texts()).toContain("从左侧选择文件或会话");
+  expect(app.texts()).toContain("从左侧选择文件或会话，也可以直接发送开始新会话");
   expect(app.count("id:content-tab-file:App.tsx")).toBe(0);
   expect(documentRequests()).toBe(requests);
   await app.press("id:thread-entry-t1");

@@ -4,11 +4,13 @@ import bot from "../../assets/bot.svg";
 import branch from "../../assets/branch.svg";
 import chat from "../../assets/chat.svg";
 import chevron from "../../assets/chevron.svg";
+import chevronDown from "../../assets/chevron-down.svg";
 import close from "../../assets/close.svg";
 import file from "../../assets/file.svg";
 import home from "../../assets/home.svg";
 import monitor from "../../assets/monitor.svg";
 import panel from "../../assets/panel.svg";
+import plus from "../../assets/plus.svg";
 import folder from "../../assets/project.svg";
 import search from "../../assets/search.svg";
 import settings from "../../assets/settings.svg";
@@ -24,6 +26,8 @@ const icons = {
   file,
   close,
   chevron,
+  chevronDown,
+  plus,
   home,
   settings,
   monitor,

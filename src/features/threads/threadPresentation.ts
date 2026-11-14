@@ -1,6 +1,29 @@
 import { checkPath } from "../../api/files";
 import { isConversationMessage, type ThreadRowData } from "./threadGroups";
-import { record, text } from "./threadModel";
+import { record, type ThreadView, text } from "./threadModel";
+
+export function canRetractTurn(view: ThreadView | null) {
+  const id = view?.turn?.id;
+  if (!id) return false;
+  const items = view.items.filter((item) => item.turnId === id);
+  return (
+    items.some((item) => item.type === "userMessage" && !item.from && !item.origin) &&
+    !items.some((item) =>
+      item.type === "agentMessage"
+        ? !!text(item.text)
+        : !["userMessage", "reasoning"].includes(item.type),
+    )
+  );
+}
+export function canDiscardTurn(view: ThreadView | null) {
+  const id = view?.turn?.id;
+  if (!id) return false;
+  const items = view.items.filter((item) => item.turnId === id);
+  return (
+    items.some((item) => item.type === "userMessage" && !item.from && !item.origin) &&
+    !items.some((item) => !["userMessage", "reasoning", "agentMessage"].includes(item.type))
+  );
+}
 
 export type PresentedThreadRow = ThreadRowData & {
   assistantKey: string | null;

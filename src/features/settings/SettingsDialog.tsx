@@ -1,6 +1,7 @@
 import { Scroll, signal, Text, View } from "nsh";
 import { Dialog, NumberInput, Select, Switch } from "nsh/base";
 import { AppButton as Button } from "../../components/AppButton";
+import { Icon } from "../../components/Icon";
 import { type EditorSettings, editorFonts } from "./editorSettings";
 
 export function SettingsDialog(props: { settings: EditorSettings; onClose: () => void }) {
@@ -66,10 +67,13 @@ export function SettingsDialog(props: { settings: EditorSettings; onClose: () =>
               itemClass="h-8 px-3 rounded text-foreground focus:bg-accent"
               trigger={
                 <View testID="setting-font-family-trigger" class={choiceClass}>
-                  <Text class="text-sm text-foreground">
+                  <Text
+                    class="h-5 text-sm text-foreground"
+                    style={{ lineHeight: 18, textAlignVertical: "center" }}
+                  >
                     {editorFonts.find((font) => font.value === value().fontFamily)?.title}
                   </Text>
-                  <Text class="text-quiet">⌄</Text>
+                  <Icon name="chevronDown" size={12} />
                 </View>
               }
             />
@@ -147,10 +151,13 @@ export function SettingsDialog(props: { settings: EditorSettings; onClose: () =>
               itemClass="h-8 px-3 rounded text-foreground focus:bg-accent"
               trigger={
                 <View testID="setting-tab-size-trigger" class={choiceClass}>
-                  <Text class="text-sm text-foreground">
+                  <Text
+                    class="h-5 text-sm text-foreground"
+                    style={{ lineHeight: 18, textAlignVertical: "center" }}
+                  >
                     {value().tabSize ? `${value().tabSize} 个空格宽` : "跟随语言"}
                   </Text>
-                  <Text class="text-quiet">⌄</Text>
+                  <Icon name="chevronDown" size={12} />
                 </View>
               }
             />
