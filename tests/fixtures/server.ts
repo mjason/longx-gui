@@ -7,8 +7,21 @@ export function mockServer(request: StubRequest): StubResponse {
   const variables = JSON.parse(url.searchParams.get("variables") ?? "{}") as {
     projectId?: string;
     path?: string;
+    id?: string;
   };
   if (request.method !== "GET" || url.pathname !== "/gql") return { status: 405 };
+  if (query.includes("NativeThread"))
+    return {
+      body: {
+        data: {
+          getThread: {
+            id: variables.id,
+            projectId: "p1",
+            kernelThreadId: `kernel-${variables.id}`,
+          },
+        },
+      },
+    };
   if (query.includes("NativeProjects"))
     return {
       body: {

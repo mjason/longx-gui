@@ -8,7 +8,7 @@ export function ComposerPlaceholder() {
       class="h-[150px] px-6 py-4 border-t border-border bg-surface gap-4"
     >
       <Text class="text-xs text-muted-foreground">继续会话</Text>
-      <Text class="flex-1 text-[13px] text-quiet">会话正文与消息发送尚未接入</Text>
+      <Text class="flex-1 text-[13px] text-quiet">从左侧打开会话查看记录；消息发送尚未接入</Text>
       <View class="h-7 flex-row items-center gap-3">
         <Text class="flex-1 text-xs text-quiet">模型与附件功能待接入</Text>
         <Text class="text-xs text-quiet">发送尚未启用</Text>

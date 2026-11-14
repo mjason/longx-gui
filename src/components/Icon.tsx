@@ -1,4 +1,5 @@
 import { Image, token } from "nsh";
+import assistant from "../../assets/assistant.svg";
 import bot from "../../assets/bot.svg";
 import branch from "../../assets/branch.svg";
 import chat from "../../assets/chat.svg";
@@ -11,8 +12,11 @@ import panel from "../../assets/panel.svg";
 import folder from "../../assets/project.svg";
 import search from "../../assets/search.svg";
 import settings from "../../assets/settings.svg";
+import user from "../../assets/user.svg";
 
 const icons = {
+  user,
+  assistant,
   chat,
   branch,
   bot,

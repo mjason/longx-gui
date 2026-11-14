@@ -83,7 +83,11 @@ test("retains separate file and conversation tabs with selection and close behav
   await app.press("id:thread-entry-t1");
   expect(app.count("id:content-tab-file:App.tsx")).toBe(1);
   expect(app.count("id:content-tab-chat:t1")).toBe(1);
-  const requests = app.requests().length;
+  // Reopening a closed chat now reads its metadata; document/cache operations
+  // must still avoid unrelated reads.
+  const documentRequests = () =>
+    app.requests().filter((request) => !request.url.includes("NativeThread")).length;
+  const requests = documentRequests();
   await app.press("id:content-tab-file:App.tsx");
   await app.waitFor("id:file-editor");
   expect(app.count("id:file-editor")).toBe(1);
@@ -101,7 +105,7 @@ test("retains separate file and conversation tabs with selection and close behav
   await app.press("id:close-content-file:App.tsx");
   expect(app.texts()).toContain("从左侧选择文件或会话");
   expect(app.count("id:content-tab-file:App.tsx")).toBe(0);
-  expect(app.requests().length).toBe(requests);
+  expect(documentRequests()).toBe(requests);
   await app.press("id:thread-entry-t1");
   await app.press("id:project-tab-p2");
   await app.waitFor("id:project-selected-p2");
@@ -240,8 +244,8 @@ test("uses a native lazy Tree and opens files on keyboard activation", async () 
   expect(app.count("id:file-editor")).toBe(1);
   await app.press("id:thread-entry-t1");
   expect(app.texts()).toContain("界面设计");
-  expect(app.texts()).toContain("会话内容将在后续接入");
-  expect(app.count("id:composer-placeholder")).toBe(1);
+  expect(app.count("id:thread-pane")).toBe(1);
+  expect(app.count("id:composer-placeholder")).toBe(0);
   expect(app.requests().every((request) => request.method === "GET")).toBe(true);
 });
 

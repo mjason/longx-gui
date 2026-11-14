@@ -7,6 +7,7 @@ import { documentKey, type EditorState } from "../files/editorState";
 import { GitDiffPane } from "../git/GitDiffPane";
 import type { GitState } from "../git/gitState";
 import type { EditorSettings } from "../settings/editorSettings";
+import { ThreadPane } from "../threads/ThreadPane";
 import { ComposerPlaceholder } from "./ComposerPlaceholder";
 import type { ContentTabsState } from "./contentTabs";
 
@@ -88,7 +89,15 @@ export function ContentPanel(props: {
           }}
         />
       </If>
-      <If when={!file() && !diff()}>
+      <If when={!!thread() && !!state.currentServer() && !!state.selectedProject()}>
+        <ThreadPane
+          url={state.currentServer()!.url}
+          projectId={state.selectedProject()!.id}
+          threadId={thread()!.id}
+          onFile={(path) => props.tabs.openFile({ path, name: path.split("/").pop() ?? path })}
+        />
+      </If>
+      <If when={!file() && !diff() && !thread()}>
         <Scroll testID="workspace-body" class="flex-1">
           <View class="px-9 py-7 gap-4">
             <If when={!state.currentServer()}>
@@ -117,9 +126,7 @@ export function ContentPanel(props: {
               <Text class="text-[13px] text-muted-foreground">
                 {state.selectedProject()?.rootPath ?? "服务器尚未创建项目"}
               </Text>
-              <Text class="text-[13px] text-muted-foreground">
-                {thread() ? "会话内容将在后续接入" : "从左侧选择文件或会话"}
-              </Text>
+              <Text class="text-[13px] text-muted-foreground">从左侧选择文件或会话</Text>
             </If>
           </View>
         </Scroll>
