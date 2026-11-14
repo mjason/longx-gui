@@ -17,6 +17,8 @@ import { createContentTabs } from "./contentTabs";
 import { DockConversations, DockFiles } from "./DockSidebar";
 import { createDockState } from "./dockState";
 import { PanelBar } from "./PanelBar";
+import { SidebarActionDialog } from "./SidebarActionDialog";
+import { createSidebarActions } from "./sidebarActions";
 import { WorkspaceDock } from "./WorkspaceDock";
 
 export function WorkspaceLayout(props: {
@@ -98,6 +100,14 @@ export function WorkspaceLayout(props: {
     entries: () => state.workspaceData().files,
     search,
   });
+  const sidebarActions = createSidebarActions({
+    workspace: state,
+    tree,
+    tabs,
+    editor,
+    refreshGit: () => void git.refresh(),
+    filesBusy: git.busy,
+  });
   effect(() => {
     state.selectedServer();
     state.selectedProject()?.id;
@@ -110,12 +120,19 @@ export function WorkspaceLayout(props: {
         if (focused) void git.refresh(false);
       }),
     );
-    effect(() => currentWindow().set({ closeOnPress: editor.dirtyCount() === 0 && !git.busy() }));
+    effect(() =>
+      currentWindow().set({
+        closeOnPress: editor.dirtyCount() === 0 && !git.busy() && !sidebarActions.busy(),
+      }),
+    );
     currentWindow().on("closePress", async () => {
-      if ((!editor.dirtyCount() && !git.busy()) || askingClose) return;
+      if ((!editor.dirtyCount() && !git.busy() && !sidebarActions.busy()) || askingClose) return;
       askingClose = true;
       try {
-        const busy = git.busy() || Object.values(editor.documents()).some((doc) => doc.saving);
+        const busy =
+          git.busy() ||
+          sidebarActions.busy() ||
+          Object.values(editor.documents()).some((doc) => doc.saving);
         const answer = await AlertDialog.show({
           title: "关闭工作区",
           description: busy
@@ -179,9 +196,11 @@ export function WorkspaceLayout(props: {
                 filtering={filtering}
                 rootExpanded={rootExpanded}
                 decoration={(path) => decorations()(path)}
+                actions={sidebarActions}
               />
             );
-          if (id === "conversations") return <DockConversations workspace={state} tabs={tabs} />;
+          if (id === "conversations")
+            return <DockConversations workspace={state} tabs={tabs} actions={sidebarActions} />;
           if (id === "git")
             return (
               <GitPanel
@@ -254,6 +273,7 @@ export function WorkspaceLayout(props: {
           <Text class="text-xs text-ochre">草稿 {editor.dirtyCount()}</Text>
         </If>
       </View>
+      <SidebarActionDialog actions={sidebarActions} />
     </View>
   );
 }

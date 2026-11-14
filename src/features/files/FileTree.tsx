@@ -1,4 +1,4 @@
-import { Text, token, View } from "nsh";
+import { type Point, Text, token, View } from "nsh";
 import { Tree } from "nsh/base";
 import type { FileEntry } from "../../api/client";
 import { Icon } from "../../components/Icon";
@@ -9,6 +9,7 @@ export function FileTree(props: {
   state: FileTreeState;
   onOpen: (file: FileEntry) => void;
   decoration: (path: string) => GitDecoration | undefined;
+  onContext?: (file: FileEntry, at: Point) => void;
 }) {
   const state = props.state;
   const color = (id: string, fallback: "quiet" | "foreground") => {
@@ -46,6 +47,13 @@ export function FileTree(props: {
                 item.disabled ? `file-tree-status-${item.id}` : `file-entry-${item.id.slice(6)}`
               }
               class="h-6 flex-row items-center gap-[6px]"
+              onContextMenu={(event) => {
+                const file = state.entry(item.id);
+                if (file) {
+                  state.selected.set(item.id);
+                  props.onContext?.(file, event.pagePosition);
+                }
+              }}
               style={{ paddingLeft: 14 + item.depth * 14 }}
             >
               <View class="w-3 items-center">

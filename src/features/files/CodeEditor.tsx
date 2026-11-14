@@ -88,7 +88,7 @@ export function CodeEditor(props: {
             onFocus={props.onFocus}
             value={doc().text}
             language={doc().path}
-            readOnly={doc().truncated || doc().saving}
+            readOnly={doc().truncated || doc().saving || props.state.locked(props.documentKey)}
             onChange={(event) => props.state.edit(props.documentKey, event.value)}
             fontFamily={preferences().fontFamily}
             fontSize={preferences().fontSize}

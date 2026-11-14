@@ -6,6 +6,7 @@ import { FileTree } from "../files/FileTree";
 import type { FileTreeState } from "../files/treeState";
 import type { GitDecoration } from "../git/treeDecorations";
 import type { ContentTabsState } from "./contentTabs";
+import type { SidebarActions } from "./sidebarActions";
 
 export function DockFiles(props: {
   workspace: WorkspaceState;
@@ -15,10 +16,15 @@ export function DockFiles(props: {
   filtering: Signal<boolean>;
   rootExpanded: Signal<boolean>;
   decoration: (path: string) => GitDecoration | undefined;
+  actions: SidebarActions;
 }) {
   const state = props.workspace;
   return (
-    <View testID="files-dock" class="flex-1 bg-sidebar">
+    <View
+      testID="files-dock"
+      class="flex-1 bg-sidebar"
+      onContextMenu={(event) => props.actions.fileMenu(undefined, event.pagePosition)}
+    >
       <If when={props.filtering()}>
         <Input
           testID="sidebar-search"
@@ -36,7 +42,12 @@ export function DockFiles(props: {
         <Text class="p-3 text-xs text-destructive">{state.workspaceData().error}</Text>
       </If>
       <If when={props.rootExpanded() && state.workspaceData().status === "ready"}>
-        <FileTree state={props.tree} onOpen={props.tabs.openFile} decoration={props.decoration} />
+        <FileTree
+          state={props.tree}
+          onOpen={props.tabs.openFile}
+          decoration={props.decoration}
+          onContext={props.actions.fileMenu}
+        />
         <If when={props.tree.items().length === 0}>
           <Text class="p-3 text-[13px] text-muted-foreground">
             {props.search() ? "没有匹配的文件" : "目录为空"}
@@ -47,7 +58,11 @@ export function DockFiles(props: {
   );
 }
 
-export function DockConversations(props: { workspace: WorkspaceState; tabs: ContentTabsState }) {
+export function DockConversations(props: {
+  workspace: WorkspaceState;
+  tabs: ContentTabsState;
+  actions: SidebarActions;
+}) {
   const state = props.workspace;
   return (
     <View testID="conversations-dock" class="flex-1 bg-sidebar">
@@ -64,6 +79,7 @@ export function DockConversations(props: { workspace: WorkspaceState; tabs: Cont
               testID={`thread-entry-${thread().id}`}
               role="button"
               onPress={() => props.tabs.openThread(thread())}
+              onContextMenu={(event) => props.actions.threadMenu(thread(), event.pagePosition)}
               class={
                 props.tabs.active() === `chat:${thread().id}`
                   ? "h-8 px-2 flex-row items-center gap-2 rounded bg-accent"

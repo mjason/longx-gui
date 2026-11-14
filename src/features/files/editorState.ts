@@ -20,6 +20,19 @@ export function documentKey(url: string, projectId: string, path: string) {
 }
 export function createEditorState(onSaved: () => void) {
   const documents = signal<Record<string, Document>>({});
+  const locks = signal<{ url: string; projectId: string; path: string }[]>([]);
+  const locked = (key: string) => {
+    const doc = documents()[key];
+    return (
+      !!doc &&
+      locks().some(
+        (lock) =>
+          doc.url === lock.url &&
+          doc.projectId === lock.projectId &&
+          (doc.path === lock.path || doc.path.startsWith(`${lock.path}/`)),
+      )
+    );
+  };
   const requests = new Set<AbortController>();
   let disposed = false;
   effect(() => () => {
@@ -44,6 +57,15 @@ export function createEditorState(onSaved: () => void) {
     }
   }
   async function load(url: string, projectId: string, path: string, force = false) {
+    if (
+      locks().some(
+        (lock) =>
+          lock.url === url &&
+          lock.projectId === projectId &&
+          (path === lock.path || path.startsWith(`${lock.path}/`)),
+      )
+    )
+      return;
     const key = documentKey(url, projectId, path);
     const existing = documents()[key];
     if (
@@ -89,12 +111,40 @@ export function createEditorState(onSaved: () => void) {
   }
   return {
     documents,
+    locked,
+    lockPath(url: string, projectId: string, path: string) {
+      const affected = Object.values(documents()).filter(
+        (doc) =>
+          doc.url === url &&
+          doc.projectId === projectId &&
+          (doc.path === path || doc.path.startsWith(`${path}/`)),
+      );
+      if (affected.some((doc) => doc.saving || doc.status === "loading" || dirty(doc.key)))
+        throw new Error("此路径下有未保存、正在保存或读取中的文件，请先处理后再操作。");
+      const lock = { url, projectId, path };
+      locks.update((values) => [...values, lock]);
+      return () => locks.update((values) => values.filter((value) => value !== lock));
+    },
+    invalidatePath(url: string, projectId: string, path: string) {
+      documents.update((all) =>
+        Object.fromEntries(
+          Object.entries(all).filter(
+            ([, doc]) =>
+              !(
+                doc.url === url &&
+                doc.projectId === projectId &&
+                (doc.path === path || doc.path.startsWith(`${path}/`))
+              ),
+          ),
+        ),
+      );
+    },
     load,
     dirty,
     dirtyCount: () => Object.values(documents()).filter((doc) => doc.text !== doc.saved).length,
     edit(key: string, text: string) {
       const doc = documents()[key];
-      if (doc?.status === "ready" && !doc.binary && !doc.truncated && !doc.saving)
+      if (doc?.status === "ready" && !doc.binary && !doc.truncated && !doc.saving && !locked(key))
         patch(key, { text, error: "" });
     },
     discard(key: string) {
@@ -103,7 +153,14 @@ export function createEditorState(onSaved: () => void) {
     },
     async save(key: string) {
       const doc = documents()[key];
-      if (doc?.status !== "ready" || doc.binary || doc.truncated || doc.saving || !dirty(key))
+      if (
+        doc?.status !== "ready" ||
+        doc.binary ||
+        doc.truncated ||
+        doc.saving ||
+        locked(key) ||
+        !dirty(key)
+      )
         return;
       patch(key, { saving: true, error: "" });
       try {
