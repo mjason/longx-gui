@@ -26,6 +26,8 @@ import { AppButton as Button } from "../../components/AppButton";
 import { Icon } from "../../components/Icon";
 import { AssistantIdentity } from "./AssistantIdentity";
 import { ComposerWaiting } from "./ComposerWaiting";
+import { PresentView } from "./PresentView";
+import { ReasoningView } from "./ReasoningView";
 import { ThreadComposer } from "./ThreadComposer";
 import { ThreadImage } from "./ThreadImage";
 import {
@@ -45,6 +47,13 @@ import {
   presentThreadRows,
 } from "./threadPresentation";
 import { createThreadState, type ThreadState } from "./threadState";
+import {
+  isImageViewItem,
+  isPresentItem,
+  isThreadView,
+  presentTree,
+  toolImageSource,
+} from "./threadViews";
 
 const labels: Record<string, string> = {
   userMessage: "你",
@@ -57,6 +66,14 @@ const labels: Record<string, string> = {
   subAgentActivity: "子 Agent 活动",
   unknown: "活动",
 };
+const readingPositions = new Map<
+  string,
+  {
+    follow: boolean;
+    y: number;
+    anchor?: { id: string; offset: number };
+  }
+>();
 function title(item: ThreadItem) {
   if (item.type === "userMessage")
     return record(item.origin).kind === "goal" ? "目标续跑通知" : "后台任务通知";
@@ -83,6 +100,7 @@ function ThreadRow(props: {
   onLink: (url: string) => void;
   compact?: boolean;
   baseUrl?: string;
+  projectId?: string;
 }) {
   const imageWidth = signal(280);
   const message = () => isConversationMessage(props.item);
@@ -98,8 +116,7 @@ function ThreadRow(props: {
     props.state.view()?.turn?.id === props.item.turnId &&
     props.state.view()?.turn?.status === "inProgress";
   const changes = () => (Array.isArray(props.item.changes) ? props.item.changes.map(record) : []);
-  const markdownDetails = () =>
-    ["reasoning", "userMessage", "dynamicToolCall"].includes(props.item.type);
+  const markdownDetails = () => ["userMessage", "dynamicToolCall"].includes(props.item.type);
   const documentBody = () =>
     props.item.type === "dynamicToolCall"
       ? contentText(props.item.contentItems) ||
@@ -206,12 +223,46 @@ function ThreadRow(props: {
             </If>
           </If>
         </If>
-        <If when={!message()}>
+        <If when={props.item.type === "reasoning"}>
+          <ReasoningView
+            item={props.item}
+            open={props.state.expanded().includes(props.item.id)}
+            active={
+              props.state.view()?.turn?.status === "inProgress" &&
+              props.state.view()?.turn?.id === props.item.turnId &&
+              props.state.view()?.items.at(-1)?.id === props.item.id &&
+              !["completed", "failed", "interrupted"].includes(String(props.item.status))
+            }
+            onToggle={() => props.state.toggle(props.item.id)}
+            onCollapse={() => props.state.setExpanded(props.item.id, false)}
+          />
+        </If>
+        <If when={!message() && props.item.type !== "reasoning"}>
           <Collapsible
             open={props.state.expanded().includes(props.item.id)}
             content={
               <View class="mt-2 p-3 rounded bg-muted gap-2">
-                <If when={props.item.type === "dynamicToolCall"}>
+                <If when={isPresentItem(props.item)}>
+                  <PresentView
+                    tree={presentTree(props.item)}
+                    baseUrl={props.baseUrl ?? ""}
+                    width={Math.max(1, imageWidth() - 24)}
+                    id={`thread-view-${props.item.id}`}
+                  />
+                  <If when={failed()}>
+                    <Text class="text-xs text-destructive">视图工具执行失败，请核对内容。</Text>
+                  </If>
+                </If>
+                <If when={isImageViewItem(props.item)}>
+                  <ThreadImage
+                    src={toolImageSource(props.item, props.projectId ?? "")}
+                    baseUrl={props.baseUrl ?? ""}
+                    width={Math.max(1, imageWidth() - 24)}
+                    alt={text(record(props.item.details).name) || "工具图片"}
+                    id={`thread-tool-image-${props.item.id}`}
+                  />
+                </If>
+                <If when={props.item.type === "dynamicToolCall" && !isThreadView(props.item)}>
                   <Text class="text-xs text-quiet">参数</Text>
                   <Text
                     class="font-mono text-xs text-muted-foreground"
@@ -223,7 +274,7 @@ function ThreadRow(props: {
                     ).slice(0, 24000)}
                   </Text>
                 </If>
-                <If when={markdownDetails()}>
+                <If when={markdownDetails() && !isThreadView(props.item)}>
                   <TextView
                     testID={`thread-document-${props.item.id}`}
                     markdown={documentBody().slice(0, 24000)}
@@ -249,7 +300,7 @@ function ThreadRow(props: {
                     )}
                   />
                 </If>
-                <If when={!markdownDetails()}>
+                <If when={!markdownDetails() && !isThreadView(props.item)}>
                   <Text
                     class="font-mono text-xs text-muted-foreground"
                     style={{ userSelect: "text" }}
@@ -257,7 +308,7 @@ function ThreadRow(props: {
                     {details(props.item).slice(0, 24000)}
                   </Text>
                 </If>
-                <If when={details(props.item).length > 24000}>
+                <If when={!isThreadView(props.item) && details(props.item).length > 24000}>
                   <Text class="text-xs text-quiet">内容较长，仅显示前 24000 字符。</Text>
                 </If>
                 <Each of={changes()}>
@@ -323,6 +374,7 @@ function ThreadActivityGroup(props: {
   onFile: (path: string) => void;
   onLink: (url: string) => void;
   baseUrl: string;
+  projectId: string;
 }) {
   const failures = () => activityFailures(props.row);
   const open = () => props.state.expanded().includes(props.row.id);
@@ -384,6 +436,7 @@ function ThreadActivityGroup(props: {
                     onFile={props.onFile}
                     onLink={props.onLink}
                     baseUrl={props.baseUrl}
+                    projectId={props.projectId}
                     compact
                   />
                 )}
@@ -410,7 +463,22 @@ export function ThreadPane(props: {
   subscribe?: Parameters<typeof createThreadState>[0]["subscribe"];
   onCommand?: (command: "new" | "git" | "files" | "settings") => void;
 }) {
-  const followLatest = signal(true);
+  const scope = () => JSON.stringify([props.url, props.projectId, props.threadId]);
+  let readingScope = scope();
+  const followLatest = signal(readingPositions.get(readingScope)?.follow ?? true);
+  effect(() => {
+    const next = scope();
+    if (next !== readingScope) {
+      readingScope = next;
+      followLatest.set(readingPositions.get(next)?.follow ?? true);
+    }
+  });
+  effect(() => {
+    const key = scope(),
+      follow = followLatest();
+    const saved = readingPositions.get(key);
+    readingPositions.set(key, { ...saved, follow, y: saved?.y ?? 0 });
+  });
   const threadState = createThreadState({
     url: () => props.url,
     projectId: () => props.projectId,
@@ -444,7 +512,6 @@ export function ThreadPane(props: {
     }
     if (view.threadId !== previousThread) {
       previousRows = [];
-      followLatest.set(true);
     }
     previousThread = view.threadId;
     previousRows = groupThreadItems(view.items, previousRows);
@@ -504,7 +571,6 @@ export function ThreadPane(props: {
     // Bypass the reading-action wrapper so it does not disable bottom-follow.
     untracked(() => threadState.autoExpand(ids));
   });
-  const scope = () => JSON.stringify([props.url, props.projectId, props.threadId]);
   const copyKey = (key: string) => `${scope()}:${key}`;
   async function copyAssistant(key: string) {
     const value = assistantText(presented(), key),
@@ -518,6 +584,48 @@ export function ThreadPane(props: {
     }
   }
   let list: ListRef | undefined;
+  let restoringReading = false,
+    readingGeneration = 0;
+  function restoreReading(ref: ListRef) {
+    const key = scope(),
+      saved = readingPositions.get(key);
+    if (!saved || saved.follow) return;
+    restoringReading = true;
+    ++readingGeneration;
+    requestAnimationFrame(() => {
+      if (list !== ref || key !== scope()) return;
+      const index = saved.anchor ? presented().findIndex((row) => row.id === saved.anchor!.id) : -1;
+      if (index >= 0)
+        ref.scrollToIndex({ index, viewOffset: -saved.anchor!.offset, animated: false });
+      else ref.scrollToOffset({ offset: saved.y, animated: false });
+      requestAnimationFrame(() => {
+        if (list === ref && key === scope()) restoringReading = false;
+      });
+    });
+  }
+  function rememberReading(y: number) {
+    if (restoringReading) return;
+    const key = scope(),
+      ref = list,
+      generation = ++readingGeneration;
+    const ids = presented().map((row) => row.id);
+    readingPositions.set(key, { ...readingPositions.get(key), follow: followLatest(), y });
+    if (ref && typeof ref.measureScrollPosition === "function")
+      void ref
+        .measureScrollPosition()
+        .then((position) => {
+          if (!position || list !== ref || key !== scope() || generation !== readingGeneration)
+            return;
+          const id = ids[position.index];
+          if (id)
+            readingPositions.set(key, {
+              follow: followLatest(),
+              y,
+              anchor: { id, offset: position.offset },
+            });
+        })
+        .catch(() => {});
+  }
   let historyArmed = false;
   function onFile(path: string) {
     try {
@@ -582,16 +690,18 @@ export function ThreadPane(props: {
           testID="thread-timeline"
           ref={(value) => {
             list = value;
+            restoreReading(value);
           }}
           class="flex-1"
           each={presented()}
           keyExtractor={(item) => item.id}
           estimatedItemSize={90}
-          initialScrollAtEnd
+          initialScrollAtEnd={followLatest()}
           maintainVisibleContentPosition={followLatest() ? { autoscrollToBottomThreshold: 72 } : {}}
-          onScroll={(event) =>
-            away.set(event.contentSize.height - event.offset.y - event.size.height > 100)
-          }
+          onScroll={(event) => {
+            away.set(event.contentSize.height - event.offset.y - event.size.height > 100);
+            rememberReading(event.offset.y);
+          }}
           onScrollDragStart={() => {
             historyArmed = true;
           }}
@@ -646,6 +756,7 @@ export function ThreadPane(props: {
                   <ThreadRow
                     item={(row() as Extract<ThreadRowData, { kind: "message" }>).item}
                     baseUrl={props.url}
+                    projectId={props.projectId}
                     state={state}
                     onFile={onFile}
                     onLink={onLink}
@@ -654,6 +765,7 @@ export function ThreadPane(props: {
                 <If when={row().kind === "activity"}>
                   <ThreadActivityGroup
                     baseUrl={props.url}
+                    projectId={props.projectId}
                     row={row() as ActivityRow}
                     state={state}
                     running={row().id === currentActivity()?.id}

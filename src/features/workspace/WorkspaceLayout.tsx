@@ -1,4 +1,15 @@
-import { computed, effect, keymap, platform, signal, Text, token, View } from "nsh";
+import {
+  computed,
+  effect,
+  type JSX,
+  keymap,
+  platform,
+  signal,
+  Text,
+  token,
+  untracked,
+  View,
+} from "nsh";
 import { AlertDialog } from "nsh/base";
 import { currentWindow } from "nsh/desktop";
 import { AppButton as Button } from "../../components/AppButton";
@@ -26,6 +37,10 @@ export function WorkspaceLayout(props: {
   theme: ThemeState;
   settings: EditorSettings;
   onSettings: () => void;
+  projectHome?: () => JSX.Element;
+  projectNavigation?: { kind: "home" | "open"; version: number };
+  onProjectSettings?: () => void;
+  externalBusy?: boolean;
 }) {
   const state = props.workspace;
   const dock = createDockState();
@@ -98,6 +113,7 @@ export function WorkspaceLayout(props: {
     serverUrl: () => state.currentServer()?.url,
     projectId: () => state.selectedProject()?.id,
     entries: () => state.workspaceData().files,
+    ready: () => state.workspaceData().status === "ready",
     search,
   });
   const sidebarActions = createSidebarActions({
@@ -108,11 +124,37 @@ export function WorkspaceLayout(props: {
     refreshGit: () => void git.refresh(),
     filesBusy: git.busy,
   });
+  const workspaceScope = computed(() =>
+    JSON.stringify([state.currentServer()?.url, state.selectedProject()?.id]),
+  );
+  const sidebarStates = new Map<
+    string,
+    { search: string; filtering: boolean; rootExpanded: boolean }
+  >();
+  let sidebarScope = "";
   effect(() => {
-    state.selectedServer();
-    state.selectedProject()?.id;
-    search.set("");
-    tabs.reset();
+    const scope = workspaceScope();
+    untracked(() => {
+      if (sidebarScope)
+        sidebarStates.set(sidebarScope, {
+          search: search(),
+          filtering: filtering(),
+          rootExpanded: rootExpanded(),
+        });
+      sidebarScope = scope;
+      const saved = sidebarStates.get(scope);
+      search.set(saved?.search ?? "");
+      filtering.set(saved?.filtering ?? false);
+      rootExpanded.set(saved?.rootExpanded ?? true);
+      tabs.activateScope(scope);
+      dock.activateScope(scope);
+    });
+  });
+  effect(() => {
+    const navigation = props.projectNavigation;
+    if (!navigation) return;
+    if (navigation.kind === "home") tabs.openProjectHome();
+    else untracked(() => tabs.resume());
   });
   if (["macos", "windows", "linux"].includes(platform.os)) {
     effect(() =>
@@ -122,16 +164,22 @@ export function WorkspaceLayout(props: {
     );
     effect(() =>
       currentWindow().set({
-        closeOnPress: editor.dirtyCount() === 0 && !git.busy() && !sidebarActions.busy(),
+        closeOnPress:
+          editor.dirtyCount() === 0 && !git.busy() && !sidebarActions.busy() && !props.externalBusy,
       }),
     );
     currentWindow().on("closePress", async () => {
-      if ((!editor.dirtyCount() && !git.busy() && !sidebarActions.busy()) || askingClose) return;
+      if (
+        (!editor.dirtyCount() && !git.busy() && !sidebarActions.busy() && !props.externalBusy) ||
+        askingClose
+      )
+        return;
       askingClose = true;
       try {
         const busy =
           git.busy() ||
           sidebarActions.busy() ||
+          !!props.externalBusy ||
           Object.values(editor.documents()).some((doc) => doc.saving);
         const answer = await AlertDialog.show({
           title: "关闭工作区",
@@ -172,6 +220,7 @@ export function WorkspaceLayout(props: {
       onLayout={(event) => width.set(event.bounds.size.width)}
     >
       <WorkspaceDock
+        scope={workspaceScope()}
         tabs={tabs}
         dock={dock}
         onClose={(id) => {
@@ -235,6 +284,8 @@ export function WorkspaceLayout(props: {
                   }
                 }
               }}
+              projectHome={props.projectHome}
+              onProjectSettings={props.onProjectSettings}
             />
           );
         }}
@@ -243,7 +294,7 @@ export function WorkspaceLayout(props: {
         testID="workspace-status"
         class="h-6 px-2 flex-row items-center gap-3 border-t border-border bg-muted"
       >
-        <PanelBar selected={dock.selected} onSelect={dock.toggle} />
+        <PanelBar selected={dock.selected} onSelect={(panel) => dock.toggle(panel)} />
         <Button
           testID="toggle-sidebar"
           accessibilityLabel="切换侧栏"

@@ -11,6 +11,9 @@ function Harness() {
     topic = signal(""),
     stopped = signal(0),
     requests = signal(0);
+  const mounted = signal(true);
+  const viewStatus = signal("completed");
+  let longSnapshot: ReturnType<typeof threadSnapshot> | null = null;
   let channel: Parameters<typeof subscribeChannel>[0], previous: typeof channel | undefined;
   const subscribe: typeof subscribeChannel = (options) => {
     previous = channel;
@@ -18,7 +21,10 @@ function Harness() {
     topic.set(options.topic);
     const timer = setTimeout(() => {
       options.ready(true);
-      const data = threadSnapshot(options.topic.slice(7));
+      const data =
+        longSnapshot?.thread_id === options.topic.slice(7)
+          ? longSnapshot
+          : threadSnapshot(options.topic.slice(7));
       options.joined(
         {
           ...data,
@@ -56,23 +62,83 @@ function Harness() {
       <Text>{`topic:${topic()} stopped:${stopped()} requests:${requests()}`}</Text>
       <View class="h-10 px-3 flex-row items-center gap-2">
         <Button
+          testID="remount-pane"
+          class="h-8 px-3 rounded bg-accent"
+          onPress={() => mounted.set(!mounted())}
+        >
+          <Text>切换面板</Text>
+        </Button>
+        <Button
           testID="long-process"
+          class="h-8 px-3 rounded bg-accent"
+          onPress={() => {
+            longSnapshot = {
+              ...threadSnapshot(),
+              seq: 60,
+              items: [
+                {
+                  id: "long-tool",
+                  type: "commandExecution",
+                  turnId: "turn-1",
+                  exitCode: 0,
+                  command: "长输出开头",
+                  status: "completed",
+                  aggregatedOutput: Array.from(
+                    { length: 150 },
+                    (_, i) => `过程输出第 ${i + 1} 行`,
+                  ).join("\n"),
+                },
+              ],
+            };
+            channel.joined(longSnapshot, false);
+          }}
+        >
+          <Text>长过程</Text>
+        </Button>
+        <Button
+          testID="views"
           class="h-8 px-3 rounded bg-accent"
           onPress={() =>
             channel.joined(
               {
                 ...threadSnapshot(),
-                seq: 60,
+                seq: 80,
+                turn: { id: "turn-1", status: viewStatus() },
                 items: [
                   {
-                    id: "long-tool",
-                    type: "commandExecution",
-                    command: "长输出开头",
-                    status: "completed",
-                    aggregatedOutput: Array.from(
-                      { length: 150 },
-                      (_, i) => `过程输出第 ${i + 1} 行`,
-                    ).join("\n"),
+                    id: "view-1",
+                    type: "dynamicToolCall",
+                    turnId: "turn-1",
+                    namespace: "longx",
+                    tool: "present",
+                    status: viewStatus(),
+                    success: true,
+                    arguments: {
+                      $type: "Card",
+                      title: "会话内表格",
+                      children: [
+                        {
+                          $type: "Table",
+                          columns: [{ label: "检查" }, { label: "结果" }],
+                          rows: [["渲染", "通过"]],
+                        },
+                      ],
+                    },
+                  },
+                  {
+                    id: "view-image-1",
+                    type: "dynamicToolCall",
+                    turnId: "turn-1",
+                    namespace: "view_image",
+                    tool: "view_image",
+                    status: viewStatus(),
+                    success: true,
+                    details: {
+                      attachment: true,
+                      mime: "image/png",
+                      path: "preview.png",
+                      name: "预览图片",
+                    },
                   },
                 ],
               },
@@ -80,7 +146,22 @@ function Harness() {
             )
           }
         >
-          <Text>长过程</Text>
+          <Text>视图</Text>
+        </Button>
+        <Button testID="views-running" onPress={() => viewStatus.set("inProgress")}>
+          <Text>视图运行</Text>
+        </Button>
+        <Button
+          testID="views-finish"
+          onPress={() =>
+            channel.event("event", {
+              seq: 81,
+              method: "turn/completed",
+              params: { turn: { id: "turn-1", status: "completed" } },
+            })
+          }
+        >
+          <Text>视图完成</Text>
         </Button>
         <Button
           testID="images"
@@ -267,13 +348,15 @@ function Harness() {
           <Text>旧消息</Text>
         </Button>
       </View>
-      <ThreadPane
-        url="http://fixture.test"
-        projectId="p1"
-        threadId={id()}
-        onFile={() => {}}
-        subscribe={subscribe}
-      />
+      <If when={mounted()}>
+        <ThreadPane
+          url="http://fixture.test"
+          projectId="p1"
+          threadId={id()}
+          onFile={() => {}}
+          subscribe={subscribe}
+        />
+      </If>
     </View>
   );
 }

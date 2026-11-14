@@ -1,12 +1,13 @@
 import { effect, type JSX, type Signal, signal, Text, View } from "nsh";
-import { DockArea, type DockAreaRef } from "nsh/base";
+import { DockArea, type DockAreaLayout, type DockAreaRef } from "nsh/base";
 import { AppButton as Button } from "../../components/AppButton";
 import { Icon } from "../../components/Icon";
 import type { ContentTabsState } from "./contentTabs";
 import type { DockState } from "./dockState";
 import { createNativeDock, groupPanels } from "./nativeDock";
 
-export function WorkspaceDock(props: {
+interface WorkspaceDockProps {
+  scope?: string;
   tabs: ContentTabsState;
   dock: DockState;
   onClose: (id: string) => void;
@@ -16,11 +17,36 @@ export function WorkspaceDock(props: {
   projectName: string;
   conversationCount: number;
   rootExpanded: Signal<boolean>;
-}) {
-  const native = createNativeDock();
+}
+export function WorkspaceDock(props: WorkspaceDockProps) {
+  const layouts = new Map<string, DockAreaLayout>();
+  return (
+    <Each of={[props.scope ?? "workspace"]} key={(scope) => scope}>
+      {(scope) => (
+        <ProjectDock
+          {...props}
+          initialLayout={layouts.get(scope())}
+          saveLayout={(layout) => layouts.set(scope(), layout)}
+        />
+      )}
+    </Each>
+  );
+}
+function ProjectDock(
+  props: WorkspaceDockProps & {
+    initialLayout?: DockAreaLayout;
+    saveLayout: (layout: DockAreaLayout) => void;
+  },
+) {
+  const native = createNativeDock(props.initialLayout);
+  effect(() => props.saveLayout(native.layout()));
   const panelWidths = signal<Record<string, number>>({});
   const conversationsVisible = () => props.dock.chats() && props.dock.auxiliary() !== "branch";
   let ref: DockAreaRef | undefined;
+  let disposed = false;
+  effect(() => () => {
+    disposed = true;
+  });
   effect(() => {
     native.reconcile(props.tabs.items(), props.tabs.active(), props.dock.visible());
     ref?.setDockOpen("left", props.dock.visible());
@@ -32,6 +58,7 @@ export function WorkspaceDock(props: {
       auxiliary === "branch" ? "git" : auxiliary === "bot" ? "agent" : files ? "files" : null;
     if (panel)
       requestAnimationFrame(() => {
+        if (disposed) return;
         const current = props.dock.auxiliary();
         const target =
           current === "branch"
@@ -47,6 +74,7 @@ export function WorkspaceDock(props: {
   effect(() => {
     if (conversationsVisible())
       requestAnimationFrame(() => {
+        if (disposed) return;
         if (conversationsVisible()) ref?.selectPanel("conversations");
       });
   });
@@ -54,6 +82,7 @@ export function WorkspaceDock(props: {
     const request = props.tabs.selectionRequest();
     if (request)
       requestAnimationFrame(() => {
+        if (disposed) return;
         if (
           props.tabs.selectionRequest()?.version === request.version &&
           props.tabs.items().some((item) => item.id === request.id)
@@ -89,14 +118,28 @@ export function WorkspaceDock(props: {
       testID="workspace-dock"
       ref={(value) => {
         ref = value;
+        // A recreated native area can become ready after the effects' first
+        // frame. Apply the restored selection at ref readiness as well.
+        requestAnimationFrame(() => {
+          if (disposed || ref !== value) return;
+          value.setDockOpen("left", props.dock.visible());
+          const auxiliary = props.dock.auxiliary();
+          if (auxiliary) value.selectPanel(auxiliary === "branch" ? "git" : "agent");
+          const active = props.tabs.active();
+          if (active) value.selectPanel(active);
+        });
       }}
       class="flex-1 bg-background"
       layout={native.layout()}
-      onLayoutChange={(event) => native.layout.set(event.layout)}
+      onLayoutChange={(event) => {
+        if (!disposed) native.layout.set(event.layout);
+      }}
       onDockOpenChange={(event) => {
+        if (disposed) return;
         if (event.placement === "left") props.dock.open.set(event.open);
       }}
       onPanelActiveChange={(event) => {
+        if (disposed) return;
         if (event.active && props.tabs.items().some((item) => item.id === event.panel))
           props.tabs.select(event.panel);
       }}
@@ -151,11 +194,13 @@ export function WorkspaceDock(props: {
             <If when={isContent}>
               <Icon
                 name={
-                  tab.panel.startsWith("diff:")
-                    ? "branch"
-                    : tab.panel.startsWith("file:")
-                      ? "file"
-                      : "chat"
+                  tab.panel === "projects:home"
+                    ? "home"
+                    : tab.panel.startsWith("diff:")
+                      ? "branch"
+                      : tab.panel.startsWith("file:")
+                        ? "file"
+                        : "chat"
                 }
                 size={15}
               />

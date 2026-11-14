@@ -1,4 +1,6 @@
+import type { Point } from "nsh";
 import { effect, signal } from "nsh";
+import type { EditorSelection } from "nsh/base";
 import { readFile, writeFile } from "../../api/files";
 import { OperationError } from "../../api/session";
 
@@ -20,6 +22,7 @@ export function documentKey(url: string, projectId: string, path: string) {
 }
 export function createEditorState(onSaved: () => void) {
   const documents = signal<Record<string, Document>>({});
+  const viewStates = new Map<string, { selections?: EditorSelection[]; offset?: Point }>();
   const locks = signal<{ url: string; projectId: string; path: string }[]>([]);
   const locked = (key: string) => {
     const doc = documents()[key];
@@ -111,6 +114,10 @@ export function createEditorState(onSaved: () => void) {
   }
   return {
     documents,
+    viewState: (key: string) => viewStates.get(key),
+    rememberView(key: string, state: { selections?: EditorSelection[]; offset?: Point }) {
+      if (documents()[key]) viewStates.set(key, { ...viewStates.get(key), ...state });
+    },
     locked,
     lockPath(url: string, projectId: string, path: string) {
       const affected = Object.values(documents()).filter(
@@ -126,6 +133,13 @@ export function createEditorState(onSaved: () => void) {
       return () => locks.update((values) => values.filter((value) => value !== lock));
     },
     invalidatePath(url: string, projectId: string, path: string) {
+      for (const doc of Object.values(documents()))
+        if (
+          doc.url === url &&
+          doc.projectId === projectId &&
+          (doc.path === path || doc.path.startsWith(`${path}/`))
+        )
+          viewStates.delete(doc.key);
       documents.update((all) =>
         Object.fromEntries(
           Object.entries(all).filter(

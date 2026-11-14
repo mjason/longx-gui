@@ -1,5 +1,5 @@
 import { keymap, Text, View } from "nsh";
-import { Editor } from "nsh/base";
+import { Editor, type EditorRef } from "nsh/base";
 import { AppButton as Button } from "../../components/AppButton";
 import type { EditorSettings } from "../settings/editorSettings";
 import type { EditorState } from "./editorState";
@@ -9,9 +9,26 @@ export function CodeEditor(props: {
   documentKey: string;
   settings: EditorSettings;
   onFocus?: () => void;
+  active?: boolean;
 }) {
   const doc = () => props.state.documents()[props.documentKey];
   const preferences = props.settings.current;
+  let editor: EditorRef | undefined;
+  let editorKey = props.documentKey,
+    measurement = 0;
+  function rememberOffset() {
+    const key = editorKey,
+      ref = editor,
+      generation = ++measurement;
+    if (ref)
+      void ref
+        .scrollOffset()
+        .then((offset) => {
+          if (editor === ref && generation === measurement)
+            props.state.rememberView(key, { offset });
+        })
+        .catch(() => {});
+  }
   return (
     <View testID="code-editor-pane" class="flex-1 bg-background">
       <If when={!!doc()}>
@@ -82,10 +99,27 @@ export function CodeEditor(props: {
             <Text class="p-3 text-xs text-ochre">文件过大，仅显示截断预览，禁止保存。</Text>
           </If>
           <Editor
+            ref={(ref) => {
+              editor = ref;
+              const key = props.documentKey;
+              editorKey = key;
+              const saved = props.state.viewState(key);
+              requestAnimationFrame(() => {
+                if (editor !== ref || key !== props.documentKey) return;
+                if (saved?.selections?.length) ref.setSelections(saved.selections);
+                if (saved?.offset) ref.setScrollOffset(saved.offset);
+                if (props.active) ref.focus();
+              });
+            }}
             testID="file-editor"
             accessibilityLabel={doc().path}
             class="flex-1 bg-background text-foreground"
             onFocus={props.onFocus}
+            onBlur={rememberOffset}
+            onSelectionChange={({ selections }) => {
+              props.state.rememberView(props.documentKey, { selections });
+              rememberOffset();
+            }}
             value={doc().text}
             language={doc().path}
             readOnly={doc().truncated || doc().saving || props.state.locked(props.documentKey)}

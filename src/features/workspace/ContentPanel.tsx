@@ -1,4 +1,4 @@
-import { effect, Scroll, Text, token, View } from "nsh";
+import { effect, type JSX, Scroll, Text, token, View } from "nsh";
 import { AppButton as Button } from "../../components/AppButton";
 import { Icon } from "../../components/Icon";
 import type { WorkspaceState } from "../../state/workspace";
@@ -20,6 +20,8 @@ export function ContentPanel(props: {
   revision: number;
   settings: EditorSettings;
   onCommand?: (command: "new" | "git" | "files" | "settings") => void;
+  projectHome?: () => JSX.Element;
+  onProjectSettings?: () => void;
 }) {
   const state = props.workspace;
   const tab = () => props.tabs.items().find((item) => item.id === props.id);
@@ -35,6 +37,7 @@ export function ContentPanel(props: {
     const value = tab();
     return value?.kind === "chat" ? value.thread : null;
   };
+  const home = () => props.id !== "chat:new" && !!props.projectHome;
   const key = () =>
     documentKey(
       state.currentServer()?.url ?? "",
@@ -58,8 +61,18 @@ export function ContentPanel(props: {
         </Text>
         <Text class="text-xs text-quiet">/</Text>
         <Text class="flex-1 text-xs text-muted-foreground" style={{ numberOfLines: 1 }}>
-          {file()?.path ?? diff() ?? "会话"}
+          {file()?.path ?? diff() ?? (home() && !thread() ? "项目主页" : "会话")}
         </Text>
+        <If when={!!state.selectedProject() && !!props.onProjectSettings}>
+          <Button
+            testID="current-project-settings"
+            class="h-6 px-2 gap-1 rounded hover:bg-accent"
+            onPress={props.onProjectSettings}
+          >
+            <Icon name="settings" size={13} />
+            <Text class="text-xs text-muted-foreground">项目设置</Text>
+          </Button>
+        </If>
       </View>
       <If when={!!file()}>
         <CodeEditor
@@ -67,6 +80,7 @@ export function ContentPanel(props: {
           documentKey={key()}
           settings={props.settings}
           onFocus={() => props.tabs.select(props.id)}
+          active={props.tabs.active() === props.id}
         />
       </If>
       <If when={!!diff() && !!state.currentServer() && !!state.selectedProject()}>
@@ -102,6 +116,7 @@ export function ContentPanel(props: {
       <If when={!file() && !diff() && !thread()}>
         <Scroll testID="workspace-body" class="flex-1">
           <View class="px-9 py-7 gap-4">
+            <If when={home()}>{props.projectHome?.()}</If>
             <If when={!state.currentServer()}>
               <Text class="text-base text-foreground">添加服务器开始使用</Text>
             </If>
@@ -118,7 +133,7 @@ export function ContentPanel(props: {
                 <Text class="text-sm text-primary text-center">重新连接</Text>
               </Button>
             </If>
-            <If when={state.connection()?.status === "ready"}>
+            <If when={state.connection()?.status === "ready" && !home()}>
               <View class="flex-row items-center gap-2">
                 <Icon name="chat" size={18} color={token("primary")} />
                 <Text class="text-base font-medium text-foreground">
@@ -132,9 +147,22 @@ export function ContentPanel(props: {
                 从左侧选择文件或会话，也可以直接发送开始新会话
               </Text>
             </If>
+            <If when={state.connection()?.status === "ready" && home()}>
+              <Text class="text-[13px] text-muted-foreground">
+                从左侧选择文件或会话，或在当前项目开始新会话。
+              </Text>
+              <Button
+                testID="home-new-thread"
+                class="h-8 px-3 self-start rounded hover:bg-accent"
+                disabled={!state.selectedProject()}
+                onPress={props.tabs.openNewThread}
+              >
+                <Text class="text-sm text-primary">在当前项目开始新会话</Text>
+              </Button>
+            </If>
           </View>
         </Scroll>
-        <If when={!!state.selectedProject()}>
+        <If when={!!state.selectedProject() && !home()}>
           <ThreadComposer
             url={state.currentServer()?.url ?? ""}
             projectId={state.selectedProject()!.id}

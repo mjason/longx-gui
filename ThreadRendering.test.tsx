@@ -16,7 +16,7 @@ async function setup(keepAutoOpen = false) {
 test("current work opens automatically, respects manual collapse and leaves history closed", async () => {
   const app = await setup(true);
   await app.waitFor("id:thread-toggle-tool-1");
-  await app.waitFor("id:thread-document-thought-1");
+  await app.waitFor("id:thread-reasoning-thought-1");
   expect(app.texts()).toContain("正在运行");
   await app.press("id:thread-group-toggle-activity:tool-1");
   await app.press("id:activity");
@@ -29,17 +29,32 @@ test("current work opens automatically, respects manual collapse and leaves hist
 });
 test("finishing a turn closes its process and details once, but permits reopening history", async () => {
   const app = await setup(true);
-  await app.waitFor("id:thread-document-thought-1");
+  await app.waitFor("id:thread-reasoning-thought-1");
   await app.press("id:finish");
   await app.waitFor("id:thread-copy-turn:turn-1");
   expect(app.count("id:thread-toggle-tool-1")).toBe(0);
-  expect(app.count("id:thread-document-thought-1")).toBe(0);
+  expect(app.count("id:thread-reasoning-thought-1")).toBe(0);
   await app.press("id:thread-group-toggle-activity:tool-1");
   expect(app.count("id:thread-toggle-tool-1")).toBe(1);
   await app.press("id:thread-toggle-thought-1");
-  expect(app.count("id:thread-document-thought-1")).toBe(1);
+  expect(app.count("id:thread-reasoning-thought-1")).toBe(1);
   await app.press("id:theme");
-  expect(app.count("id:thread-document-thought-1")).toBe(1);
+  expect(app.count("id:thread-reasoning-thought-1")).toBe(1);
+});
+test("remounting a conversation restores process details and respects prior manual collapse", async () => {
+  const app = await setup(true);
+  await app.press("id:thread-toggle-tool-1");
+  expect(app.texts().some((value) => value.includes("M src/App.tsx"))).toBe(true);
+  await app.press("id:remount-pane");
+  expect(app.count("id:thread-timeline")).toBe(0);
+  await app.press("id:remount-pane");
+  await app.waitFor("id:thread-toggle-tool-1");
+  expect(app.texts().some((value) => value.includes("M src/App.tsx"))).toBe(true);
+  await app.press("id:thread-group-toggle-activity:tool-1");
+  await app.press("id:remount-pane");
+  await app.press("id:remount-pane");
+  await app.waitFor("id:thread-item-assistant-1");
+  expect(app.count("id:thread-toggle-tool-1")).toBe(0);
 });
 test("shows user and assistant images without a redundant user label", async () => {
   const app = await setup();
@@ -86,17 +101,17 @@ test("native activity groups stay collapsed on streaming updates and retain nest
   await app.press("id:thread-group-toggle-activity:tool-1");
   expect(app.texts().some((value) => value.includes("M src/App.tsx"))).toBe(true);
 });
-test("expanded documents render Markdown and can collapse from the footer or fixed toolbar", async () => {
+test("reasoning uses its compact native renderer and can collapse from the footer or fixed toolbar", async () => {
   const app = await setup();
   await app.press("id:thread-group-toggle-activity:tool-1");
   await app.press("id:thread-toggle-thought-1");
-  await app.waitFor("id:thread-document-thought-1");
+  await app.waitFor("id:thread-reasoning-thought-1");
+  expect(app.count("id:thread-document-thought-1")).toBe(0);
   expect(app.texts()).toContain("检查说明");
   expect(app.texts()).toContain("const checked = true;");
   expect(app.texts().some((value) => value.includes("## 检查说明"))).toBe(false);
-  await app.scroll("id:thread-timeline", 240);
   await app.press("id:thread-collapse-thought-1");
-  expect(app.count("id:thread-document-thought-1")).toBe(0);
+  expect(app.count("id:thread-reasoning-thought-1")).toBe(0);
   await app.press("id:thread-group-collapse-activity:tool-1");
   expect(app.count("id:thread-toggle-tool-1")).toBe(0);
   await app.press("id:thread-group-toggle-activity:tool-1");
@@ -105,7 +120,7 @@ test("expanded documents render Markdown and can collapse from the footer or fix
   expect(app.count("id:thread-toggle-tool-1")).toBe(0);
   expect(app.count("id:thread-collapse-all")).toBe(0);
   await app.press("id:thread-group-toggle-activity:tool-1");
-  expect(app.count("id:thread-document-thought-1")).toBe(0);
+  expect(app.count("id:thread-reasoning-thought-1")).toBe(0);
 });
 test("assistant identity appears once per turn, copies prose only and uses real file events", async () => {
   const app = await setup();

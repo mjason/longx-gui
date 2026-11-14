@@ -1,10 +1,11 @@
-import { signal } from "nsh";
+import { batch, signal } from "nsh";
 import type { FileEntry, ThreadSummary } from "../../api/client";
 
 /** Git can open a path before its directory metadata has been loaded. */
 type EditorFile = Pick<FileEntry, "name" | "path"> & Partial<FileEntry>;
 
 export type ContentTab =
+  | { id: "projects:home"; kind: "projects"; title: string }
   | { id: "chat:new"; kind: "new"; title: string }
   | { id: string; kind: "file"; title: string; file: EditorFile }
   | { id: string; kind: "diff"; title: string; path: string }
@@ -15,6 +16,8 @@ export function createContentTabs() {
   const active = signal<string | null>(null);
   const selectionRequest = signal<{ id: string; version: number } | null>(null);
   let version = 0;
+  const scopes = new Map<string, { items: ContentTab[]; active: string | null }>();
+  let currentScope = "";
   function open(tab: ContentTab) {
     if (!items().some((item) => item.id === tab.id)) items.set([...items(), tab]);
     active.set(tab.id);
@@ -24,6 +27,23 @@ export function createContentTabs() {
     items,
     active,
     selectionRequest,
+    activateScope(scope: string) {
+      if (scope === currentScope) return;
+      if (currentScope) scopes.set(currentScope, { items: items(), active: active() });
+      currentScope = scope;
+      const saved = scopes.get(scope);
+      batch(() => {
+        items.set(saved?.items ?? []);
+        active.set(saved?.active ?? null);
+        selectionRequest.set(saved?.active ? { id: saved.active, version: ++version } : null);
+      });
+    },
+    resume() {
+      const id = active();
+      if (id && items().some((item) => item.id === id))
+        selectionRequest.set({ id, version: ++version });
+      else open({ id: "chat:new", kind: "new", title: "新会话" });
+    },
     current: () => items().find((item) => item.id === active()),
     select: (id: string) => {
       if (items().some((item) => item.id === id)) active.set(id);
@@ -35,6 +55,7 @@ export function createContentTabs() {
     openThread: (thread: ThreadSummary) =>
       open({ id: `chat:${thread.id}`, kind: "chat", title: thread.title || "未命名会话", thread }),
     openNewThread: () => open({ id: "chat:new", kind: "new", title: "新会话" }),
+    openProjectHome: () => open({ id: "projects:home", kind: "projects", title: "项目主页" }),
     close(id: string) {
       const index = items().findIndex((item) => item.id === id);
       if (index < 0) return;

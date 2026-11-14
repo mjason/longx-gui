@@ -35,29 +35,31 @@ function mapNodes(layout: DockAreaLayout, visit: (node: DockNode) => DockNode): 
     bottom: layout.bottom ? { ...layout.bottom, layout: walk(layout.bottom.layout) } : null,
   };
 }
-export function createNativeDock() {
-  const layout = signal<DockAreaLayout>({
-    center: {
-      type: "split",
-      id: 1,
-      axis: "horizontal",
-      children: [{ type: "tabs", id: 10, panels: ["welcome"] }],
-    },
-    left: {
-      open: true,
-      size: 248,
-      layout: {
+export function createNativeDock(initial?: DockAreaLayout) {
+  const layout = signal<DockAreaLayout>(
+    initial ?? {
+      center: {
         type: "split",
-        id: 20,
-        axis: "vertical",
-        children: [
-          { type: "tabs", id: 21, panels: ["files", "git", "agent"] },
-          { type: "tabs", id: 22, panels: ["conversations"] },
-        ],
-        sizes: [null, 210],
+        id: 1,
+        axis: "horizontal",
+        children: [{ type: "tabs", id: 10, panels: ["welcome"] }],
+      },
+      left: {
+        open: true,
+        size: 248,
+        layout: {
+          type: "split",
+          id: 20,
+          axis: "vertical",
+          children: [
+            { type: "tabs", id: 21, panels: ["files", "git", "agent"] },
+            { type: "tabs", id: 22, panels: ["conversations"] },
+          ],
+          sizes: [null, 210],
+        },
       },
     },
-  });
+  );
   return {
     layout,
     reconcile(items: ContentTab[], active: string | null, open: boolean) {

@@ -108,7 +108,7 @@ test("retains separate file and conversation tabs with selection and close behav
   await app.waitFor("id:file-editor");
   expect(app.count("id:file-editor")).toBe(1);
   await app.press("id:close-content-file:App.tsx");
-  expect(app.texts()).toContain("从左侧选择文件或会话，也可以直接发送开始新会话");
+  expect(app.texts()).toContain("从左侧选择文件或会话，或在当前项目开始新会话。");
   expect(app.count("id:content-tab-file:App.tsx")).toBe(0);
   expect(documentRequests()).toBe(requests);
   await app.press("id:thread-entry-t1");
@@ -395,7 +395,9 @@ test("handles an empty project list without requesting a made-up project", async
     height: 840,
     network: { "*": { body: { data: { listProjects: [] } } } },
   });
-  await app.waitFor("text:服务器尚未创建项目");
+  await app.waitFor("text:还没有项目，新建或打开一个目录开始使用。");
+  expect(app.enabled("id:new-project")).toBe(true);
+  expect(app.enabled("id:open-project-directory")).toBe(true);
   expect(app.requests().length).toBe(1);
   expect(app.count("id:composer-placeholder")).toBe(0);
 });
@@ -442,7 +444,7 @@ test("keeps empty folders in the Tree and retries failed child reads", async () 
   expect(app.count("id:file-entry-App.tsx")).toBe(1);
 });
 
-test("clears cached branches when switching projects", async () => {
+test("keeps directory caches isolated when switching projects", async () => {
   const app = await openApp();
   await app.press("id:file-entry-src");
   await app.waitFor("id:file-entry-src/index.ts");

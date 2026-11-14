@@ -10,6 +10,12 @@ import { AppButton as Button } from "../../components/AppButton";
 import { Icon } from "../../components/Icon";
 import type { ComposerState } from "./composerState";
 
+const catalogRevision = signal(0);
+/** A saved project/server default must be reflected by already mounted composers. */
+export function invalidateComposerCatalog() {
+  catalogRevision.update((value) => value + 1);
+}
+
 export function createComposerCatalog(
   scope: () => { url: string; projectId: string; threadId: string },
 ) {
@@ -19,6 +25,7 @@ export function createComposerCatalog(
   let previousScope = "",
     loadedAt = 0;
   effect(() => {
+    catalogRevision();
     const target = scope();
     retry();
     const key = JSON.stringify(target);

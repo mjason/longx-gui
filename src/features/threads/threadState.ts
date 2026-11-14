@@ -3,6 +3,16 @@ import { subscribeChannel } from "../../api/channel";
 import { query } from "../../api/client";
 import { prepend, record, reduceEvent, snapshot, type ThreadView } from "./threadModel";
 
+const threadViews = new Map<
+  string,
+  {
+    view: ThreadView | null;
+    expanded: string[];
+    autoExpanded: string[];
+    autoCollapsed: string[];
+  }
+>();
+
 export function createThreadState(options: {
   url: () => string;
   projectId: () => string;
@@ -22,24 +32,40 @@ export function createThreadState(options: {
   let channel: ReturnType<typeof subscribeChannel> | undefined;
   let generation = 0;
   let alive = true;
+  let activeScope = "";
+  function remember() {
+    if (activeScope)
+      threadViews.set(activeScope, {
+        view: view(),
+        expanded: expanded(),
+        autoExpanded: [...autoExpanded],
+        autoCollapsed: [...autoCollapsed],
+      });
+  }
   effect(() => {
     const url = options.url(),
       projectId = options.projectId(),
       threadId = options.threadId();
     retry();
     const run = ++generation;
+    const scope = JSON.stringify([url, projectId, threadId]);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
     untracked(() => {
-      view.set(null);
+      remember();
+      activeScope = scope;
+      const saved = threadViews.get(scope);
+      view.set(saved?.view ?? null);
       error.set("");
       loading.set(true);
       connected.set(false);
       paging.set(false);
       pageError.set("");
-      expanded.set([]);
+      expanded.set(saved?.expanded ?? []);
       autoExpanded.clear();
       autoCollapsed.clear();
+      for (const id of saved?.autoExpanded ?? []) autoExpanded.add(id);
+      for (const id of saved?.autoCollapsed ?? []) autoCollapsed.add(id);
     });
     let subscription: ReturnType<typeof subscribeChannel> | undefined;
     let batch: unknown[] = [],
@@ -64,6 +90,12 @@ export function createThreadState(options: {
           !thread.kernelThreadId
         )
           throw new Error("会话不存在、不可访问或不属于当前项目。");
+        if (view() && view()!.threadId !== thread.kernelThreadId) {
+          view.set(null);
+          expanded.set([]);
+          autoExpanded.clear();
+          autoCollapsed.clear();
+        }
         subscription = (options.subscribe ?? subscribeChannel)({
           url,
           topic: `thread:${thread.kernelThreadId}`,
@@ -132,6 +164,7 @@ export function createThreadState(options: {
     }
     void untracked(load);
     return () => {
+      untracked(remember);
       ++generation;
       controller.abort();
       clearTimeout(timeout);

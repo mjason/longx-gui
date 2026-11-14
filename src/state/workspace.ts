@@ -1,4 +1,4 @@
-import { batch, computed, effect, signal } from "nsh";
+import { batch, computed, effect, signal, untracked } from "nsh";
 import {
   type FileEntry,
   listProjects,
@@ -60,7 +60,7 @@ export function createWorkspaceState() {
     const timeout = setTimeout(() => controller.abort(), 10000);
     connections.update((values) => ({
       ...values,
-      [id]: { status: "loading", projects: [], error: "" },
+      [id]: { status: "loading", projects: values[id]?.projects ?? [], error: "" },
     }));
     try {
       const values = await listProjects(server.url, controller.signal);
@@ -91,7 +91,7 @@ export function createWorkspaceState() {
           ...values,
           [id]: {
             status: "error",
-            projects: [],
+            projects: values[id]?.projects ?? [],
             error: "无法连接服务器，请检查地址、服务状态或访问权限。",
           },
         }));
@@ -104,27 +104,46 @@ export function createWorkspaceState() {
 
   // A project/server change cancels the previous read. Late responses
   // may never populate a different project's or server's panel.
+  const workspaceScope = computed(() =>
+    JSON.stringify([currentServer()?.url, selectedProject()?.id, connection()?.status]),
+  );
+  const workspaces = new Map<string, WorkspaceData>();
+  let activeWorkspace = "";
   effect(() => {
-    const server = currentServer();
-    const project = selectedProject();
-    if (!server || !project || connection()?.status !== "ready") {
+    const [serverUrl, projectId, status] = JSON.parse(workspaceScope()) as [
+      string | null,
+      string | null,
+      string | null,
+    ];
+    const scope = JSON.stringify([serverUrl, projectId]);
+    const cached = untracked(() => {
+      if (activeWorkspace) workspaces.set(activeWorkspace, workspaceData());
+      activeWorkspace = serverUrl && projectId ? scope : "";
+      return workspaces.get(scope);
+    });
+    if (!serverUrl || !projectId) {
       workspaceData.set({ status: "loading", files: [], threads: [], error: "" });
       return;
     }
+    workspaceData.set(cached ?? { status: "loading", files: [], threads: [], error: "" });
+    if (status !== "ready") return;
     const controller = new AbortController();
     let active = true;
     const timeout = setTimeout(() => controller.abort(), 10000);
-    workspaceData.set({ status: "loading", files: [], threads: [], error: "" });
-    void loadWorkspace(server.url, project.id, "", controller.signal)
+    void loadWorkspace(serverUrl, projectId, "", controller.signal)
       .then((data) => {
-        if (active) workspaceData.set({ status: "ready", ...data, error: "" });
+        if (active) {
+          const next: WorkspaceData = { status: "ready", ...data, error: "" };
+          workspaces.set(scope, next);
+          workspaceData.set(next);
+        }
       })
       .catch(() => {
         if (active)
           workspaceData.set({
-            status: "error",
-            files: [],
-            threads: [],
+            status: cached?.status === "ready" ? "ready" : "error",
+            files: cached?.files ?? [],
+            threads: cached?.threads ?? [],
             error: "工作区读取失败，请检查服务状态后重试。",
           });
       })
@@ -216,6 +235,26 @@ export function createWorkspaceState() {
       if (!projects().some((project) => project.id === id)) return;
       batch(() => {
         selectedProjects.update((values) => ({ ...values, [selectedServer()]: id }));
+      });
+    },
+    applyProject: (serverId: number, url: string, project: Project, select = false) => {
+      if (!servers().some((server) => server.id === serverId && server.url === url)) return;
+      batch(() => {
+        connections.update((values) => {
+          const connection = values[serverId];
+          if (!connection) return values;
+          return {
+            ...values,
+            [serverId]: {
+              ...connection,
+              projects: connection.projects.some((value) => value.id === project.id)
+                ? connection.projects.map((value) => (value.id === project.id ? project : value))
+                : [...connection.projects, project],
+            },
+          };
+        });
+        if (select && selectedServer() === serverId)
+          selectedProjects.update((values) => ({ ...values, [serverId]: project.id }));
       });
     },
     refresh: () => {

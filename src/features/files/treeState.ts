@@ -12,9 +12,10 @@ interface FileTreeOptions {
   projectId: Accessor<string | undefined>;
   entries: Accessor<FileEntry[]>;
   search: Accessor<string>;
+  ready?: Accessor<boolean>;
 }
 
-/** Expansion cache is local to this tree, invalidated on root/project changes. */
+/** Each project keeps its own expansion/cache; refreshed roots do not reset reading state. */
 export function createFileTreeState(options: FileTreeOptions) {
   const directories = signal<Record<string, Directory>>({});
   const expanded = signal<string[]>([]);
@@ -22,6 +23,18 @@ export function createFileTreeState(options: FileTreeOptions) {
   const root = signal<FileEntry[] | null>(null);
   const roots = () => root() ?? options.entries();
   const requests = new Map<string, AbortController>();
+  const scopes = new Map<
+    string,
+    {
+      directories: Record<string, Directory>;
+      expanded: string[];
+      selected: string | null;
+      root: FileEntry[];
+      source: FileEntry[] | undefined;
+    }
+  >();
+  let scope = "",
+    source: FileEntry[] | undefined;
   let generation = 0;
   function cancel() {
     generation++;
@@ -29,18 +42,50 @@ export function createFileTreeState(options: FileTreeOptions) {
     requests.clear();
   }
   effect(() => {
-    options.serverUrl();
-    options.projectId();
-    options.entries();
+    const next = JSON.stringify([options.serverUrl(), options.projectId()]);
+    const entries = options.entries(),
+      ready = options.ready?.() ?? true;
     untracked(() => {
-      cancel();
-      directories.set({});
-      root.set(null);
-      expanded.set([]);
-      selected.set(null);
+      if (scope !== next) {
+        if (scope)
+          scopes.set(scope, {
+            directories: Object.fromEntries(
+              Object.entries(directories()).filter(
+                ([, directory]) => directory.status !== "loading",
+              ),
+            ),
+            expanded: expanded(),
+            selected: selected(),
+            root: roots(),
+            source,
+          });
+        cancel();
+        scope = next;
+        const saved = scopes.get(next);
+        directories.set(saved?.directories ?? {});
+        expanded.set(saved?.expanded ?? []);
+        selected.set(saved?.selected ?? null);
+        root.set(saved?.root ?? []);
+        source = saved?.source;
+        requestAnimationFrame(() => {
+          if (scope === next) for (const id of expanded()) void expand(id);
+        });
+      }
+      if (ready && entries !== source) {
+        root.set(entries);
+        source = entries;
+        const folders = entries.filter((entry) => entry.kind === "dir").map((entry) => entry.path);
+        directories.update((values) =>
+          Object.fromEntries(
+            Object.entries(values).filter(([path]) =>
+              folders.some((folder) => path === folder || path.startsWith(`${folder}/`)),
+            ),
+          ),
+        );
+      }
     });
-    return cancel;
   });
+  effect(() => () => cancel());
 
   function entry(id: string): FileEntry | undefined {
     if (!id.startsWith("entry:")) return undefined;

@@ -1,4 +1,5 @@
 import { expect, test } from "nsh/test";
+import { isThreadAttachment } from "./src/api/threadImages";
 import { threadImageSource } from "./src/features/threads/ThreadImage";
 
 test("thread images resolve against the selected server and reject local or executable sources", () => {
@@ -19,4 +20,19 @@ test("thread images resolve against the selected server and reject local or exec
   ]) {
     expect(threadImageSource(source, base)).toBe("");
   }
+});
+test("private attachment sessions never travel to another origin", () => {
+  expect(
+    isThreadAttachment(
+      "https://server.example/files/p/_attachments/a.png",
+      "https://server.example",
+    ),
+  ).toBe(true);
+  expect(
+    isThreadAttachment(
+      "https://other.example/files/p/_attachments/a.png",
+      "https://server.example",
+    ),
+  ).toBe(false);
+  expect(isThreadAttachment("data:image/png;base64,AAA", "https://server.example")).toBe(false);
 });

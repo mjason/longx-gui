@@ -38,7 +38,7 @@ export function DockFiles(props: {
       <If when={!!state.selectedProject() && state.workspaceData().status === "loading"}>
         <Text class="p-3 text-[13px] text-muted-foreground">正在读取…</Text>
       </If>
-      <If when={!!state.selectedProject() && state.workspaceData().status === "error"}>
+      <If when={!!state.selectedProject() && !!state.workspaceData().error}>
         <Text class="p-3 text-xs text-destructive">{state.workspaceData().error}</Text>
       </If>
       <If when={props.rootExpanded() && state.workspaceData().status === "ready"}>
