@@ -56,6 +56,33 @@ function Harness() {
       <Text>{`topic:${topic()} stopped:${stopped()} requests:${requests()}`}</Text>
       <View class="h-10 px-3 flex-row items-center gap-2">
         <Button
+          testID="long-process"
+          class="h-8 px-3 rounded bg-accent"
+          onPress={() =>
+            channel.joined(
+              {
+                ...threadSnapshot(),
+                seq: 60,
+                items: [
+                  {
+                    id: "long-tool",
+                    type: "commandExecution",
+                    command: "长输出开头",
+                    status: "completed",
+                    aggregatedOutput: Array.from(
+                      { length: 150 },
+                      (_, i) => `过程输出第 ${i + 1} 行`,
+                    ).join("\n"),
+                  },
+                ],
+              },
+              false,
+            )
+          }
+        >
+          <Text>长过程</Text>
+        </Button>
+        <Button
           testID="images"
           class="h-8 px-3 rounded bg-accent"
           onPress={() => {

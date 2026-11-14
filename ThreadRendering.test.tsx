@@ -35,6 +35,7 @@ test("renders native user/Markdown/tool records through the kernel channel and l
   expect(app.texts().some((value) => value.includes("M src/App.tsx"))).toBe(true);
   await app.press("id:thread-toggle-thought-1");
   expect(app.texts()).toContain("检查目录和测试状态。");
+  await app.press("id:thread-collapse-all");
   await app.press("id:thread-earlier");
   await app.waitUntil(() => app.texts().some((value) => value.includes("requests:1")));
   await app.waitFor("id:thread-item-earlier-1");
@@ -55,6 +56,26 @@ test("native activity groups stay collapsed on streaming updates and retain nest
   expect(app.count("id:thread-toggle-tool-1")).toBe(0);
   await app.press("id:thread-group-toggle-activity:tool-1");
   expect(app.texts().some((value) => value.includes("M src/App.tsx"))).toBe(true);
+});
+test("expanded documents render Markdown and can collapse from the footer or fixed toolbar", async () => {
+  const app = await setup();
+  await app.press("id:thread-group-toggle-activity:tool-1");
+  await app.press("id:thread-toggle-thought-1");
+  await app.waitFor("id:thread-document-thought-1");
+  expect(app.texts()).toContain("检查说明");
+  expect(app.texts()).toContain("const checked = true;");
+  expect(app.texts().some((value) => value.includes("## 检查说明"))).toBe(false);
+  await app.press("id:thread-collapse-thought-1");
+  expect(app.count("id:thread-document-thought-1")).toBe(0);
+  await app.press("id:thread-group-collapse-activity:tool-1");
+  expect(app.count("id:thread-toggle-tool-1")).toBe(0);
+  await app.press("id:thread-group-toggle-activity:tool-1");
+  await app.press("id:thread-toggle-thought-1");
+  await app.press("id:thread-collapse-all");
+  expect(app.count("id:thread-toggle-tool-1")).toBe(0);
+  expect(app.count("id:thread-collapse-all")).toBe(0);
+  await app.press("id:thread-group-toggle-activity:tool-1");
+  expect(app.count("id:thread-document-thought-1")).toBe(0);
 });
 test("assistant identity appears once per turn, copies prose only and uses real file events", async () => {
   const app = await setup();

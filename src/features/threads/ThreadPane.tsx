@@ -78,6 +78,13 @@ function ThreadRow(props: {
     props.state.view()?.turn?.id === props.item.turnId &&
     props.state.view()?.turn?.status === "inProgress";
   const changes = () => (Array.isArray(props.item.changes) ? props.item.changes.map(record) : []);
+  const markdownDetails = () =>
+    ["reasoning", "userMessage", "dynamicToolCall"].includes(props.item.type);
+  const documentBody = () =>
+    props.item.type === "dynamicToolCall"
+      ? contentText(props.item.contentItems) ||
+        (props.item.success === false ? "工具执行失败。" : "")
+      : details(props.item);
   return (
     <View
       testID={`thread-item-${props.item.id}`}
@@ -184,12 +191,52 @@ function ThreadRow(props: {
             open={props.state.expanded().includes(props.item.id)}
             content={
               <View class="mt-2 p-3 rounded bg-muted gap-2">
-                <Text
-                  class="font-mono text-xs text-muted-foreground"
-                  style={{ userSelect: "text" }}
-                >
-                  {details(props.item).slice(0, 24000)}
-                </Text>
+                <If when={props.item.type === "dynamicToolCall"}>
+                  <Text class="text-xs text-quiet">参数</Text>
+                  <Text
+                    class="font-mono text-xs text-muted-foreground"
+                    style={{ userSelect: "text" }}
+                  >
+                    {(typeof props.item.arguments === "string"
+                      ? props.item.arguments
+                      : JSON.stringify(props.item.arguments ?? {}, null, 2)
+                    ).slice(0, 24000)}
+                  </Text>
+                </If>
+                <If when={markdownDetails()}>
+                  <TextView
+                    testID={`thread-document-${props.item.id}`}
+                    markdown={documentBody().slice(0, 24000)}
+                    selectable
+                    class="w-full text-sm text-foreground"
+                    classes={{
+                      paragraph: "text-sm leading-6",
+                      heading1: "text-lg font-semibold mt-3 mb-2",
+                      heading2: "text-base font-semibold mt-3 mb-2",
+                      heading3: "text-sm font-semibold mt-2 mb-1",
+                      codeBlock: "rounded border border-border bg-surface",
+                      codeBlockCode: "p-3 text-xs font-mono",
+                    }}
+                    codeBlockActions={[{ id: "copy", label: "复制" }]}
+                    onLinkPress={({ url }) => props.onLink(url)}
+                    renderImage={(image) => (
+                      <ThreadImage
+                        src={image.src}
+                        alt={image.alt}
+                        baseUrl={props.baseUrl || ""}
+                        width={Math.max(1, imageWidth() - 24)}
+                      />
+                    )}
+                  />
+                </If>
+                <If when={!markdownDetails()}>
+                  <Text
+                    class="font-mono text-xs text-muted-foreground"
+                    style={{ userSelect: "text" }}
+                  >
+                    {details(props.item).slice(0, 24000)}
+                  </Text>
+                </If>
                 <If when={details(props.item).length > 24000}>
                   <Text class="text-xs text-quiet">内容较长，仅显示前 24000 字符。</Text>
                 </If>
@@ -203,6 +250,13 @@ function ThreadRow(props: {
                     </Button>
                   )}
                 </Each>
+                <Button
+                  testID={`thread-collapse-${props.item.id}`}
+                  class="h-7 px-2 self-start rounded hover:bg-accent"
+                  onPress={() => props.state.setExpanded(props.item.id, false)}
+                >
+                  <Text class="text-xs text-muted-foreground">收起此项 ↑</Text>
+                </Button>
               </View>
             }
           >
@@ -241,6 +295,7 @@ function ThreadActivityGroup(props: {
   running: boolean;
   onFile: (path: string) => void;
   onLink: (url: string) => void;
+  baseUrl: string;
 }) {
   const failures = () => activityFailures(props.row);
   const open = () => props.state.expanded().includes(props.row.id);
@@ -289,10 +344,18 @@ function ThreadActivityGroup(props: {
                     state={props.state}
                     onFile={props.onFile}
                     onLink={props.onLink}
+                    baseUrl={props.baseUrl}
                     compact
                   />
                 )}
               </Each>
+              <Button
+                testID={`thread-group-collapse-${props.row.id}`}
+                class="h-8 px-2 self-start rounded hover:bg-accent"
+                onPress={() => props.state.setExpanded(props.row.id, false)}
+              >
+                <Text class="text-xs text-muted-foreground">收起执行过程 ↑</Text>
+              </Button>
             </View>
           </AccordionPanel>
         </AccordionItem>
@@ -307,12 +370,26 @@ export function ThreadPane(props: {
   onFile: (path: string) => void;
   subscribe?: Parameters<typeof createThreadState>[0]["subscribe"];
 }) {
-  const state = createThreadState({
+  const followLatest = signal(true);
+  const threadState = createThreadState({
     url: () => props.url,
     projectId: () => props.projectId,
     threadId: () => props.threadId,
     subscribe: props.subscribe,
   });
+  // Expansion is a reading action, not a new streamed reply. Disable end-follow
+  // before changing row height so native anchoring keeps the clicked heading.
+  const state: ThreadState = {
+    ...threadState,
+    toggle(id) {
+      followLatest.set(false);
+      threadState.toggle(id);
+    },
+    setExpanded(id, open) {
+      followLatest.set(false);
+      threadState.setExpanded(id, open);
+    },
+  };
   const away = signal(false),
     linkError = signal("");
   const narrow = signal(false);
@@ -325,7 +402,10 @@ export function ThreadPane(props: {
       previousRows = [];
       return previousRows;
     }
-    if (view.threadId !== previousThread) previousRows = [];
+    if (view.threadId !== previousThread) {
+      previousRows = [];
+      followLatest.set(true);
+    }
     previousThread = view.threadId;
     previousRows = groupThreadItems(view.items, previousRows);
     return previousRows;
@@ -377,6 +457,17 @@ export function ThreadPane(props: {
                   ? "运行中"
                   : "会话记录"}
         </Text>
+        <If when={state.expanded().length > 0}>
+          <Button
+            testID="thread-collapse-all"
+            class="h-6 px-2 rounded hover:bg-accent"
+            onPress={() => {
+              for (const id of state.expanded()) state.setExpanded(id, false);
+            }}
+          >
+            <Text class="text-xs text-muted-foreground">全部收起</Text>
+          </Button>
+        </If>
         <Button
           testID="thread-refresh"
           onPress={state.retry}
@@ -404,13 +495,14 @@ export function ThreadPane(props: {
           keyExtractor={(item) => item.id}
           estimatedItemSize={90}
           initialScrollAtEnd
-          maintainVisibleContentPosition={{ autoscrollToBottomThreshold: 72 }}
+          maintainVisibleContentPosition={followLatest() ? { autoscrollToBottomThreshold: 72 } : {}}
           onScroll={(event) =>
             away.set(event.contentSize.height - event.offset.y - event.size.height > 100)
           }
           onScrollDragStart={() => {
             historyArmed = true;
           }}
+          onScrollDragEnd={() => followLatest.set(!away())}
           onLoadMoreAtStart={() => {
             if (historyArmed) {
               historyArmed = false;
@@ -468,6 +560,7 @@ export function ThreadPane(props: {
                 </If>
                 <If when={row().kind === "activity"}>
                   <ThreadActivityGroup
+                    baseUrl={props.url}
                     row={row() as ActivityRow}
                     state={state}
                     running={
@@ -548,6 +641,7 @@ export function ThreadPane(props: {
         <Button
           testID="thread-to-bottom"
           onPress={() => {
+            followLatest.set(true);
             list?.scrollToEnd({ animated: false });
             away.set(false);
           }}

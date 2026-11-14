@@ -30,7 +30,9 @@ export function threadSnapshot(threadId = "kernel-t1", seq = 10) {
         id: "thought-1",
         type: "reasoning",
         turnId: "turn-1",
-        summary: ["检查目录和测试状态。"],
+        summary: [
+          "## 检查说明\n\n检查目录和测试状态。\n\n- **结构**保持清晰\n\n```ts\nconst checked = true;\n```",
+        ],
         content: [],
       },
     ],
