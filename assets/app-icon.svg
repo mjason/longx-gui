@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile" x1="512" y1="64" x2="512" y2="960" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f0f3f9"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="512" y1="64" x2="512" y2="960" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#d8dfeb"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="160" y1="70" x2="300" y2="414" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0096ff"/>
+      <stop offset=".5" stop-color="#006aff"/>
+      <stop offset="1" stop-color="#0737e9"/>
+    </linearGradient>
+    <linearGradient id="navy" x1="335" y1="125" x2="440" y2="238" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#213b60"/>
+      <stop offset="1" stop-color="#14243b"/>
+    </linearGradient>
+    <linearGradient id="lower" x1="322" y1="278" x2="426" y2="414" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#009dff"/>
+      <stop offset="1" stop-color="#0051ff"/>
+    </linearGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#tile)"/>
+  <rect x="67" y="67" width="890" height="890" rx="197" fill="none" stroke="url(#edge)" stroke-width="6"/>
+  <g transform="translate(128 160) scale(1.5)">
+    <path d="M38 120 117 54V322H279L199 402H38Z" fill="url(#blue)"/>
+    <path d="M124 125H229L343 258 286 313Z" fill="url(#blue)"/>
+    <path d="M304 193 364 125H467L351 247Z" fill="url(#navy)"/>
+    <path d="M294 324 351 270 474 414H368Z" fill="url(#lower)"/>
+  </g>
+</svg>

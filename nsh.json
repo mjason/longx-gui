@@ -3,6 +3,7 @@
   "id": "com.example.longxgui",
   "version": "1.0.0",
   "build": 1,
+  "icon": "assets/app-icon.png",
   "appearance": "light",
   "theme": {
     "cssVars": {
