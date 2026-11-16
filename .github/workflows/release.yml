@@ -39,6 +39,7 @@ jobs:
         run: |
           echo "NSH_KEY_DIR=$RUNNER_TEMP/longx-signing" >> "$GITHUB_ENV"
           echo "APPLE_KEYCHAIN_PATH=$RUNNER_TEMP/longx-signing.keychain-db" >> "$GITHUB_ENV"
+          echo "APPLE_KEYCHAIN_SEARCH_BACKUP=$RUNNER_TEMP/longx-keychain-search.json" >> "$GITHUB_ENV"
           echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/longx-signing/AuthKey.p8" >> "$GITHUB_ENV"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -93,6 +94,19 @@ jobs:
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$APPLE_KEYCHAIN_PATH"
           security import "$NSH_KEY_DIR/developer-id.p12" -P "$APPLE_CERTIFICATE_PASSWORD" -t cert -f pkcs12 -k "$APPLE_KEYCHAIN_PATH" -T /usr/bin/codesign -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$APPLE_KEYCHAIN_PATH"
+          node --input-type=module <<'NODE'
+          import { execFileSync } from "node:child_process";
+          import { writeFileSync } from "node:fs";
+          const original = execFileSync("/usr/bin/security", ["list-keychains", "-d", "user"], { encoding: "utf8" });
+          const paths = [...original.matchAll(/"([^"]+)"/g)].map(match => match[1]);
+          if (!paths.length) throw new Error("Cannot safely preserve the keychain search list.");
+          writeFileSync(process.env.APPLE_KEYCHAIN_SEARCH_BACKUP, JSON.stringify(paths), { mode: 0o600 });
+          execFileSync("/usr/bin/security", ["list-keychains", "-d", "user", "-s", ...paths, process.env.APPLE_KEYCHAIN_PATH]);
+          const identities = execFileSync("/usr/bin/security", ["find-identity", "-v", "-p", "codesigning", process.env.APPLE_KEYCHAIN_PATH], { encoding: "utf8" });
+          if (!identities.split("\n").some(line => line.trim().match(/^\d+\) [A-Fa-f0-9]{40} "/) && line.includes(`"${process.env.APPLE_SIGN_IDENTITY}"`)))
+            throw new Error("The temporary keychain has no valid identity matching APPLE_SIGN_IDENTITY.");
+          console.log("Developer ID signing identity validated.");
+          NODE
       - name: Build and sign locally; this does not publish
         run: npm run release:prepare -- "$RELEASE_MODE"
       - name: Verify manifest signature and referenced files
@@ -118,5 +132,15 @@ jobs:
         if: always()
         shell: bash
         run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from "node:child_process";
+          import { existsSync, readFileSync, unlinkSync } from "node:fs";
+          const backup = process.env.APPLE_KEYCHAIN_SEARCH_BACKUP;
+          if (existsSync(backup)) {
+            const paths = JSON.parse(readFileSync(backup, "utf8"));
+            execFileSync("/usr/bin/security", ["list-keychains", "-d", "user", "-s", ...paths]);
+            unlinkSync(backup);
+          }
+          NODE
           node -e 'const fs=require("fs"),p=require("path"); for(const name of ["release.secret","update.secret","developer-id.p12","AuthKey.p8"]){const file=p.join(process.env.NSH_KEY_DIR,name); if(fs.existsSync(file)) fs.unlinkSync(file)}'
           if [ -f "$APPLE_KEYCHAIN_PATH" ]; then security delete-keychain "$APPLE_KEYCHAIN_PATH"; fi
