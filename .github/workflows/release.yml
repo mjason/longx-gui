@@ -125,7 +125,7 @@ jobs:
           set -euo pipefail
           VERSION="$(node -p 'JSON.parse(require("fs").readFileSync("nsh.json")).version')"
           OUT="dist/v$VERSION"
-          ASSETS=("$OUT/"*.nshpkg "$OUT/latest.json" "$OUT/latest.json.sig" "$OUT/SHA256SUMS")
+          ASSETS=("$OUT/"*.nshpkg "$OUT/latest.json" "$OUT/latest.json.sig" "$OUT/SHA256SUMS" "$OUT/RELEASE_NOTES.md")
           if [ "$RELEASE_MODE" = full ]; then ASSETS+=("$OUT/"*.tar.gz "$OUT/MACOS_DISTRIBUTION.json"); fi
           gh release create "v$VERSION" "${ASSETS[@]}" --draft --target "$GITHUB_SHA" --title "Longx GUI v$VERSION" --notes-file "$OUT/RELEASE_NOTES.md"
       - name: Remove ephemeral signing keys
